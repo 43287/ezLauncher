@@ -1,4 +1,7 @@
 use std::process::Command;
+use std::path::Path;
+use systemicons::get_icon;
+use base64::{engine::general_purpose, Engine as _};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -17,6 +20,7 @@ impl ExecutionService {
     }
 
     pub fn launch_app(&self, executable_path: &str) -> Result<(), String> {
+
         println!("====> 尝试启动目标进程: {}", executable_path);
         
         #[cfg(target_os = "windows")]
@@ -27,7 +31,10 @@ impl ExecutionService {
             cmd.arg("/C").raw_arg(format!("start \"\" \"{}\"", executable_path));
             cmd.creation_flags(DETACHED_PROCESS);
             match cmd.spawn() {
-                Ok(_) => Ok(()),
+                Ok(child) => {
+                    println!("成功启动应用，PID: {}", child.id());
+                    Ok(())
+                }
                 Err(e) => {
                     println!("====> 启动失败: {}", e);
                     Err(format!("Failed to launch application: {}", e))
@@ -39,11 +46,50 @@ impl ExecutionService {
         {
             let mut cmd = Command::new(executable_path);
             match cmd.spawn() {
-                Ok(_) => Ok(()),
+                Ok(child) => {
+                    println!("成功启动应用，PID: {}", child.id());
+                    Ok(())
+                }
                 Err(e) => Err(format!("Failed to launch application: {}", e)),
             }
         }
     }
+}
+
+/// 提取文件信息，用于拖放自动初始化
+#[derive(serde::Serialize)]
+pub struct ExtractedFileInfo {
+    pub name: String,
+    pub path: String,
+    pub icon_base64: Option<String>,
+}
+
+pub fn extract_file_info(file_path: String) -> Result<ExtractedFileInfo, String> {
+    let path = Path::new(&file_path);
+    
+    // 提取文件名（不包含扩展名）
+    let name = path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    // 尝试提取原生图标 (32x32)
+    let icon_base64 = match get_icon(&file_path, 32) {
+        Ok(icon_data) => {
+            let base64_str = general_purpose::STANDARD.encode(&icon_data);
+            Some(format!("data:image/png;base64,{}", base64_str))
+        },
+        Err(e) => {
+            println!("提取图标失败: {:?}", e);
+            None
+        }
+    };
+
+    Ok(ExtractedFileInfo {
+        name,
+        path: file_path,
+        icon_base64,
+    })
 }
 
 #[cfg(test)]

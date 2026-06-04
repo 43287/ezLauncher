@@ -12,6 +12,7 @@
     "core:window:allow-set-size",
     "core:window:allow-set-position",
     "core:window:allow-current-monitor",
-    "core:window:allow-is-visible"
+    "core:window:allow-is-visible",
+    "store:default"
   ]
 }

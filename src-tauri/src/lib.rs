@@ -54,10 +54,12 @@ pub fn run() {
     }
 
     builder
+        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             application::commands::launch_app,
             application::commands::extract_icon,
+            application::commands::extract_file_info,
             hide_window
         ])
         .setup(|app| {
