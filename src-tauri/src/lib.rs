@@ -10,15 +10,24 @@ pub mod services;
 pub mod application;
 pub mod ui;
 
-#[tauri::command]
-fn hide_window(window: tauri::Window) {
-    // 隐藏窗口时，通知前端触发滑出动画
+fn trigger_hide_animation(window: &tauri::WebviewWindow) {
     let _ = window.emit("force_hide_animation", ());
-    // 稍微延迟一下再真正隐藏 Tauri 窗口，等待前端动画完成
+    let win_clone = window.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(300));
-        let _ = window.hide();
+        let _ = win_clone.hide();
     });
+}
+
+fn trigger_show_animation(window: &tauri::WebviewWindow) {
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = window.emit("force_show_animation", ());
+}
+
+#[tauri::command]
+fn hide_window(window: tauri::WebviewWindow) {
+    trigger_hide_animation(&window);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -33,18 +42,9 @@ pub fn run() {
                     if event.state == ShortcutState::Pressed {
                         if let Some(window) = app.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
-                                // 触发前端动画并隐藏
-                                let _ = window.emit("force_hide_animation", ());
-                                let win_clone = window.clone();
-                                std::thread::spawn(move || {
-                                    std::thread::sleep(std::time::Duration::from_millis(300));
-                                    let _ = win_clone.hide();
-                                });
+                                trigger_hide_animation(&window);
                             } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                // 通知前端触发展示动画
-                                let _ = window.emit("force_show_animation", ());
+                                trigger_show_animation(&window);
                             }
                         }
                     }
@@ -85,16 +85,9 @@ pub fn run() {
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
-                                let _ = window.emit("force_hide_animation", ());
-                                let win_clone = window.clone();
-                                std::thread::spawn(move || {
-                                    std::thread::sleep(std::time::Duration::from_millis(300));
-                                    let _ = win_clone.hide();
-                                });
+                                trigger_hide_animation(&window);
                             } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                let _ = window.emit("force_show_animation", ());
+                                trigger_show_animation(&window);
                             }
                         }
                     }
@@ -110,16 +103,9 @@ pub fn run() {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
-                                let _ = window.emit("force_hide_animation", ());
-                                let win_clone = window.clone();
-                                std::thread::spawn(move || {
-                                    std::thread::sleep(std::time::Duration::from_millis(300));
-                                    let _ = win_clone.hide();
-                                });
+                                trigger_hide_animation(&window);
                             } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                let _ = window.emit("force_show_animation", ());
+                                trigger_show_animation(&window);
                             }
                         }
                     }

@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { LaunchItem } from "../types";
 import { ShortcutItem } from "./ShortcutItem";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
 import {
   DndContext,
   closestCenter,
@@ -21,7 +19,7 @@ import {
 
 interface AppGridProps {
   apps: LaunchItem[];
-  onAppAdd: (app: LaunchItem) => void;
+  isDraggingFile?: boolean;
   onAppRemove?: (id: string) => void;
   onAppReorder?: (apps: LaunchItem[]) => void;
   onAppRename?: (id: string, newName: string) => void;
@@ -31,9 +29,7 @@ interface AppGridProps {
 /**
  * 应用网格组件，支持拖拽添加应用
  */
-export const AppGrid: React.FC<AppGridProps> = ({ apps, onAppAdd, onAppRemove, onAppReorder, onAppRename, onEditProperties }) => {
-  const [isDraggingFile, setIsDraggingFile] = useState(false);
-
+export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, onAppRemove, onAppReorder, onAppRename, onEditProperties }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -57,61 +53,13 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, onAppAdd, onAppRemove, o
     }
   };
 
-  useEffect(() => {
-    const appWindow = getCurrentWindow();
-    
-    const unlistenPromise = appWindow.onDragDropEvent((event) => {
-      if (event.payload.type === 'enter' || event.payload.type === 'over') {
-        setIsDraggingFile(true);
-      } else if (event.payload.type === 'leave') {
-        setIsDraggingFile(false);
-      } else if (event.payload.type === 'drop') {
-        setIsDraggingFile(false);
-        const files = event.payload.paths;
-        if (files && files.length > 0) {
-          const filePath = files[0];
-          const fileNameMatch = filePath.match(/[^\\/]+$/);
-          const fileName = fileNameMatch ? fileNameMatch[0].replace(/\.[^/.]+$/, "") : "Unknown";
-
-          const createAndAddApp = async () => {
-            let icon_base64: string | undefined = undefined;
-            try {
-              if (filePath.toLowerCase().endsWith('.exe') || filePath.toLowerCase().endsWith('.lnk')) {
-                icon_base64 = await invoke<string>("extract_icon", { executablePath: filePath });
-              }
-            } catch (err) {
-              console.error("Failed to extract icon:", err);
-            }
-
-            const newApp: LaunchItem = {
-              id: crypto.randomUUID(),
-              name: fileName,
-              type: 'app',
-              executable_path: filePath,
-              shortcut: null,
-              icon_base64,
-            };
-            
-            onAppAdd(newApp);
-          };
-
-          createAndAddApp();
-        }
-      }
-    });
-
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, [onAppAdd]);
-
   return (
       <div
-        className={`min-h-[300px] p-6 rounded-2xl transition-all duration-200 ${
+        className={`h-full w-full rounded-2xl transition-all duration-200 ${
           isDraggingFile
             ? "bg-blue-50 dark:bg-blue-900/20 border-2 border-dashed border-blue-400"
             : "bg-transparent border-2 border-transparent"
-        }`}
+        } ${apps.length === 0 ? '' : 'p-2'}`}
         role="region"
         aria-label="应用快捷方式网格，支持拖拽文件添加"
       >
@@ -130,7 +78,7 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, onAppAdd, onAppRemove, o
             items={apps.map(app => app.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-4 items-start content-start">
               {apps.map((app) => (
                 <ShortcutItem
                   key={app.id}

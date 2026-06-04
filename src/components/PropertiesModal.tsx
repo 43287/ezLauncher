@@ -14,9 +14,9 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
 
   const [name, setName] = useState(app.name);
   const [shortcut, setShortcut] = useState(app.shortcut || "");
-  const [executablePath, setExecutablePath] = useState(app.executable_path || "");
+  const [executablePath, setExecutablePath] = useState(app.executablePath || "");
   const [url, setUrl] = useState(app.url || "");
-  const [iconBase64, setIconBase64] = useState(app.icon_base64 || "");
+  const [iconBase64, setIconBase64] = useState(app.iconBase64 || "");
   
   // 附加参数 (mock properties for the future)
   const [args, setArgs] = useState("");
@@ -27,9 +27,9 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
       ...app,
       name,
       shortcut: shortcut || null,
-      executable_path: executablePath,
+      executablePath,
       url,
-      icon_base64: iconBase64,
+      iconBase64,
       // args, runAsAdmin could be added to LaunchItem in the future
     });
     onClose();
@@ -106,6 +106,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                     <input
                       type="text"
                       value={name}
+                      aria-label="名称"
                       onChange={(e) => setName(e.target.value)}
                       className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
                     />
@@ -119,6 +120,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                       <input
                         type="text"
                         value={executablePath}
+                        aria-label="目标路径"
                         onChange={(e) => setExecutablePath(e.target.value)}
                         className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
                       />
@@ -133,6 +135,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                       <input
                         type="text"
                         value={url}
+                        aria-label="URL"
                         onChange={(e) => setUrl(e.target.value)}
                         className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
                       />
@@ -145,6 +148,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                     <div className="ml-4 flex-1 max-w-[200px]">
                       <textarea
                         value={args}
+                        aria-label="启动参数"
                         onChange={(e) => setArgs(e.target.value)}
                         placeholder="如: --hidden\n每行一个参数"
                         rows={3}
@@ -176,6 +180,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                     <input
                       type="text"
                       value={iconBase64}
+                      aria-label="图标 URL 或 Base64"
                       onChange={(e) => setIconBase64(e.target.value)}
                       placeholder="手动输入图片 URL 或 Base64"
                       className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
@@ -209,6 +214,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                     <input
                       type="text"
                       value={shortcut}
+                      aria-label="全局快捷键"
                       onChange={(e) => setShortcut(e.target.value)}
                       placeholder="如: Ctrl+Shift+A"
                       className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
@@ -225,6 +231,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                           <input
                             type="checkbox"
                             className="sr-only peer"
+                            aria-label="管理员权限"
                             checked={runAsAdmin}
                             onChange={(e) => setRunAsAdmin(e.target.checked)}
                           />

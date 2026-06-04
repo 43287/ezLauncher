@@ -42,7 +42,7 @@ interface SortableTabProps {
   saveTabName: () => void;
   handleInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   setActiveLeftTab: (id: string) => void;
-  handleTabDoubleClick: (tab: Tab, type: 'left' | 'top') => void;
+  handleTabDoubleClick: (tab: Tab, type: 'left' | 'top', e?: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent, tab: Tab) => void;
   editInputRef: React.RefObject<HTMLInputElement | null>;
 }
@@ -82,7 +82,7 @@ function SortableTab({
       style={style} 
       {...attributes} 
       {...listeners}
-      className="w-10 h-10 flex items-center justify-center mb-4 last:mb-0"
+      className="w-10 h-10 flex items-center justify-center"
       onContextMenu={(e) => onContextMenu(e, tab)}
     >
       {isEditing ? (
@@ -90,6 +90,7 @@ function SortableTab({
           ref={editInputRef}
           type="text"
           value={editValue}
+          aria-label="重命名标签"
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={saveTabName}
           onKeyDown={handleInputKeyDown}
@@ -103,8 +104,8 @@ function SortableTab({
           role="tab"
           aria-selected={isActive}
           onClick={() => setActiveLeftTab(tab.id)}
-          onDoubleClick={() => handleTabDoubleClick(tab, 'left')}
-          className={`w-full h-full flex items-center justify-center rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+          onDoubleClick={(e) => handleTabDoubleClick(tab, 'left', e)}
+          className={`w-full h-full flex items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
             isActive 
               ? 'bg-blue-500 text-white shadow-md' 
               : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
@@ -129,7 +130,6 @@ function App() {
   const [isVisible, setIsVisible] = useState(false);
   
   const [leftTabs, setLeftTabs] = useState<Tab[]>([
-    { id: '1', name: 'All' },
     { id: '2', name: 'Work' },
     { id: '3', name: 'Game' }
   ]);
@@ -149,20 +149,34 @@ function App() {
     }
   }, [isLoaded, hasInitialized, settings]);
 
-  useEffect(() => {
-    if (hasInitialized) updateSetting('apps', apps);
-  }, [apps, hasInitialized]);
+  const prevAppsRef = useRef(apps);
+  const prevLeftTabsRef = useRef(leftTabs);
+  const prevTopTabsRef = useRef(topTabs);
 
   useEffect(() => {
-    if (hasInitialized) updateSetting('leftTabs', leftTabs);
-  }, [leftTabs, hasInitialized]);
+    if (!hasInitialized) return;
+    
+    if (prevAppsRef.current !== apps) {
+      updateSetting('apps', apps);
+      prevAppsRef.current = apps;
+    }
+    if (prevLeftTabsRef.current !== leftTabs) {
+      updateSetting('leftTabs', leftTabs);
+      prevLeftTabsRef.current = leftTabs;
+    }
+    if (prevTopTabsRef.current !== topTabs) {
+      updateSetting('topTabs', topTabs);
+      prevTopTabsRef.current = topTabs;
+    }
+  }, [apps, leftTabs, topTabs, hasInitialized]);
 
-  useEffect(() => {
-    if (hasInitialized) updateSetting('topTabs', topTabs);
-  }, [topTabs, hasInitialized]);
-
-  const [activeLeftTab, setActiveLeftTab] = useState('1');
+  const [activeLeftTab, setActiveLeftTab] = useState('2');
   const [activeTopTab, setActiveTopTab] = useState('1');
+
+  const activeTabsRef = useRef({ left: '2', top: '1' });
+  useEffect(() => {
+    activeTabsRef.current = { left: activeLeftTab, top: activeTopTab };
+  }, [activeLeftTab, activeTopTab]);
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTabType, setEditingTabType] = useState<'left' | 'top' | null>(null);
@@ -186,7 +200,12 @@ function App() {
     }
   }, [editingTabId]);
 
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+
   useEffect(() => {
+    let unlisteners: (() => void)[] = [];
+    let isMounted = true;
+
     const setupWindow = async () => {
       const win = getCurrentWindow();
       const monitor = await currentMonitor();
@@ -208,71 +227,107 @@ function App() {
       const unlistenShow = await listen("force_show_animation", () => {
         setIsVisible(true);
       });
+      if (isMounted) unlisteners.push(unlistenShow); else unlistenShow();
+
       const unlistenHide = await listen("force_hide_animation", () => {
         setIsVisible(false);
       });
+      if (isMounted) unlisteners.push(unlistenHide); else unlistenHide();
 
-      // 监听 Tauri 原生的拖拽释放事件
-      let isExtracting = false; // 防止重复触发
-      const unlistenDrop = await listen("tauri://drag-drop", async (event: any) => {
-        if (isExtracting) return;
-        
-        const paths = event.payload?.paths as string[];
-        if (paths && paths.length > 0) {
-          isExtracting = true;
-          // 处理拖入的文件
-          for (const path of paths) {
-            try {
-              const info: any = await invoke("extract_file_info", { filePath: path });
-              
-              const newApp: LaunchItem = {
-                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                name: info.name,
-                type: 'app',
-                executable_path: info.path,
-                icon_base64: info.icon_base64 || undefined
-              };
-              
-              // 使用函数式更新来避免闭包陷阱，同时在内部做去重校验
-              setApps(prev => {
-                if (newApp.type === 'app' && newApp.executable_path) {
-                  if (prev.some(app => app.type === 'app' && app.executable_path === newApp.executable_path)) {
-                    return prev;
+      // 统一的文件拖拽处理
+      let isExtracting = false;
+      const unlistenDrop = await win.onDragDropEvent(async (event) => {
+        if (event.payload.type === 'enter' || event.payload.type === 'over') {
+          setIsDraggingFile(true);
+        } else if (event.payload.type === 'leave') {
+          setIsDraggingFile(false);
+        } else if (event.payload.type === 'drop') {
+          setIsDraggingFile(false);
+          if (isExtracting) return;
+          
+          const paths = event.payload.paths;
+          if (paths && paths.length > 0) {
+            isExtracting = true;
+            for (const path of paths) {
+              try {
+                // 优先尝试作为可执行文件或快捷方式提取图标
+                let iconBase64: string | undefined = undefined;
+                let finalName = "Unknown";
+                
+                const fileNameMatch = path.match(/[^\\/]+$/);
+                if (fileNameMatch) {
+                  finalName = fileNameMatch[0].replace(/\.[^/.]+$/, "");
+                }
+
+                if (path.toLowerCase().endsWith('.exe') || path.toLowerCase().endsWith('.lnk')) {
+                  try {
+                    iconBase64 = await invoke<string>("extract_icon", { executablePath: path });
+                  } catch (e) {
+                    console.warn("Failed to extract native icon, falling back:", e);
                   }
                 }
-                return [...prev, newApp];
-              });
-            } catch (err) {
-              console.error("Failed to extract file info:", err);
+                
+                if (!iconBase64) {
+                  const info: any = await invoke("extract_file_info", { filePath: path });
+                  finalName = info.name || finalName;
+                  iconBase64 = info.iconBase64 || undefined;
+                }
+
+                const newApp: LaunchItem = {
+                  id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                  name: finalName,
+                  type: 'app',
+                  executablePath: path,
+                  iconBase64,
+                  shortcut: null,
+                  categoryId: activeTabsRef.current.left,
+                  columnId: activeTabsRef.current.top
+                };
+                
+                setApps(prev => {
+                  if (newApp.type === 'app' && newApp.executablePath) {
+                    const existingPaths = new Set(prev.filter(a => a.type === 'app' && a.executablePath).map(a => a.executablePath));
+                    if (existingPaths.has(newApp.executablePath)) {
+                      return prev;
+                    }
+                  }
+                  return [...prev, newApp];
+                });
+              } catch (err) {
+                console.error("Failed to extract file info:", err);
+              }
             }
+            setTimeout(() => {
+              isExtracting = false;
+            }, 100);
           }
-          
-          // 稍微延迟解除锁定，防止系统的连续事件轰炸
-          setTimeout(() => {
-            isExtracting = false;
-          }, 100);
         }
       });
-
-      return () => {
-        unlistenShow();
-        unlistenHide();
-        unlistenDrop();
-      };
+      if (isMounted) unlisteners.push(unlistenDrop); else unlistenDrop();
     };
 
     setupWindow();
-  }, []); // Remove apps dependency to prevent re-binding event listeners on every app change
+
+    return () => {
+      isMounted = false;
+      unlisteners.forEach(fn => fn());
+    };
+  }, []);
 
   const handleAppAdd = (newApp: LaunchItem) => {
     setApps((prev) => {
-      // 检查是否已经存在相同路径的应用 (仅对 app 且 executable_path 存在的有效)
-      if (newApp.type === 'app' && newApp.executable_path) {
-        if (prev.some((app) => app.type === 'app' && app.executable_path === newApp.executable_path)) {
+      const appWithIds = {
+        ...newApp,
+        categoryId: newApp.categoryId || activeLeftTab,
+        columnId: newApp.columnId || activeTopTab
+      };
+      if (appWithIds.type === 'app' && appWithIds.executablePath) {
+        const existingPaths = new Set(prev.filter(a => a.type === 'app' && a.executablePath).map(a => a.executablePath));
+        if (existingPaths.has(appWithIds.executablePath)) {
           return prev;
         }
       }
-      return [...prev, newApp];
+      return [...prev, appWithIds];
     });
   };
 
@@ -280,7 +335,10 @@ function App() {
     setApps((prev) => prev.filter((app) => app.id !== id));
   };
 
-  const handleTabDoubleClick = (tab: Tab, type: 'left' | 'top') => {
+  const handleTabDoubleClick = (tab: Tab, type: 'left' | 'top', e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
     setEditingTabId(tab.id);
     setEditingTabType(type);
     setEditValue(tab.name);
@@ -340,7 +398,7 @@ function App() {
     e.stopPropagation();
     setContextMenuType('tab');
     setContextMenuTab(tab);
-    const x = Math.min(e.clientX, window.innerWidth - 145);
+    const x = Math.min(e.clientX, window.innerWidth - 100);
     const y = Math.min(e.clientY, window.innerHeight - 80);
     setContextMenuPos({ x, y });
   };
@@ -362,7 +420,8 @@ function App() {
 
   const handleRenameTab = () => {
     if (contextMenuTab) {
-      handleTabDoubleClick(contextMenuTab, 'left');
+      const type = topTabs.some(t => t.id === contextMenuTab.id) ? 'top' : 'left';
+      handleTabDoubleClick(contextMenuTab, type);
     }
     closeContextMenu();
   };
@@ -377,10 +436,17 @@ function App() {
 
   const wheelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (wheelTimeoutRef.current) clearTimeout(wheelTimeoutRef.current);
+    };
+  }, []);
+
   const handleWheel = (e: React.WheelEvent) => {
     if (editingTabId) return;
     
-    // 简单的节流，防止一次滚动触发太多次切换
+    if (Math.abs(e.deltaX) < 10 && Math.abs(e.deltaY) < 10) return; // 忽略过小的滚动（如触控板微调）
+
     if (wheelTimeoutRef.current) return;
     wheelTimeoutRef.current = setTimeout(() => {
       wheelTimeoutRef.current = null;
@@ -513,6 +579,7 @@ function App() {
                         ref={editInputRef}
                         type="text"
                         value={editValue}
+                        aria-label="重命名顶部标签"
                         onChange={(e) => setEditValue(e.target.value)}
                         onBlur={saveTabName}
                         onKeyDown={handleInputKeyDown}
@@ -526,8 +593,8 @@ function App() {
                         role="tab"
                         aria-selected={isActive}
                         onClick={() => setActiveTopTab(tab.id)}
-                        onDoubleClick={() => handleTabDoubleClick(tab, 'top')}
-                        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                        onDoubleClick={(e) => handleTabDoubleClick(tab, 'top', e)}
+                        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                           isActive
                             ? 'bg-gray-800 text-white dark:bg-gray-100 dark:text-gray-900 shadow'
                             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
@@ -547,17 +614,22 @@ function App() {
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenuType('grid');
-                // Ensure context menu stays within window bounds (window width is ~400, menu is ~140)
-                const x = Math.min(e.clientX, window.innerWidth - 145);
-                const y = Math.min(e.clientY, window.innerHeight - 150); // Approximate height
+                // Ensure context menu stays within window bounds
+                const x = Math.min(e.clientX, window.innerWidth - 100);
+                const y = Math.min(e.clientY, window.innerHeight - 200); 
                 setContextMenuPos({ x, y });
               }}
             >
               <AppGrid 
-                apps={apps} 
-                onAppAdd={handleAppAdd} 
+                apps={apps.filter(app => app.categoryId === activeLeftTab && app.columnId === activeTopTab)} 
+                isDraggingFile={isDraggingFile}
                 onAppRemove={handleAppRemove} 
-                onAppReorder={setApps}
+                onAppReorder={(newFilteredApps) => {
+                  setApps(prev => {
+                    const otherApps = prev.filter(app => app.categoryId !== activeLeftTab || app.columnId !== activeTopTab);
+                    return [...otherApps, ...newFilteredApps];
+                  });
+                }}
                 onAppRename={(id, newName) => {
                   setApps(prev => prev.map(app => app.id === id ? { ...app, name: newName } : app));
                 }}
@@ -587,7 +659,7 @@ function App() {
 
       {isAddingApp && (
         <PropertiesModal
-          app={{ id: Date.now().toString(), name: "新建快捷方式", type: addingAppType }}
+          app={{ id: Date.now().toString(), name: "新建快捷方式", type: addingAppType, shortcut: null }}
           onClose={() => setIsAddingApp(false)}
           onSave={(newApp) => {
             handleAppAdd(newApp);
@@ -655,7 +727,7 @@ function App() {
               <ContextMenuItem 
                 label="添加分隔符" 
                 onClick={() => {
-                  const newApp: LaunchItem = { id: Date.now().toString(), name: "分隔符", type: "separator" };
+                  const newApp: LaunchItem = { id: Date.now().toString(), name: "分隔符", type: "separator", shortcut: null };
                   handleAppAdd(newApp);
                   closeContextMenu();
                 }}

@@ -25,7 +25,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
     async function initStore() {
       try {
-        currentStore = await load('settings.json', { autoSave: true });
+        currentStore = await load('settings.json', { autoSave: true, defaults: {} } as any);
         setStore(currentStore);
 
         const keys = await currentStore.keys();

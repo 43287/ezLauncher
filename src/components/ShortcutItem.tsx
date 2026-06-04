@@ -16,7 +16,7 @@ interface ShortcutItemProps {
  * 快捷方式项组件
  * @param app 应用实体信息
  */
-export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRename }) => {
+export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRemove, onEditProperties, onRename }) => {
   const [isEditingSeparator, setIsEditingSeparator] = useState(false);
   const [separatorName, setSeparatorName] = useState(app.name);
 
@@ -44,8 +44,8 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRename }) => 
       if (app.type === 'link' && app.url) {
         // Handle link launching
         await invoke("launch_app", { executablePath: app.url });
-      } else if (app.executable_path) {
-        await invoke("launch_app", { executablePath: app.executable_path });
+      } else if (app.executablePath) {
+        await invoke("launch_app", { executablePath: app.executablePath });
       }
       // 启动后可以隐藏窗口
       await invoke("hide_window");
@@ -86,36 +86,86 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRename }) => 
     setIsEditingSeparator(false);
   };
 
+  const renderContextMenu = () => {
+    if (!contextMenu) return null;
+    return (
+      <>
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={closeContextMenu}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            closeContextMenu();
+          }}
+        />
+        <div
+          className="fixed z-50 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 shadow-2xl rounded-xl py-1 w-24 overflow-visible"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {app.type !== 'separator' && (
+            <>
+              <ContextMenuItem 
+                label="编辑属性" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditProperties?.(app);
+                  closeContextMenu();
+                }}
+              />
+              <div className="h-px bg-gray-200/50 dark:bg-gray-700/50 my-1 mx-2" />
+            </>
+          )}
+
+          {/* Delete Button */}
+          <button
+              className="w-full text-left px-3 py-1.5 text-xs font-medium transition-colors hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 focus-visible:outline-none relative z-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove?.(app.id);
+                closeContextMenu();
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </>
+    );
+  };
+
   if (app.type === 'separator') {
     return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        {...attributes}
-        {...listeners}
-        onContextMenu={handleContextMenu}
-        onDoubleClick={handleSeparatorDoubleClick}
-        className="col-span-full flex items-center py-2 cursor-grab active:cursor-grabbing"
-      >
-        <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
-        <div className="px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-          {isEditingSeparator ? (
-            <input
-              autoFocus
-              value={separatorName}
-              onChange={(e) => setSeparatorName(e.target.value)}
-              onKeyDown={handleSeparatorKeyDown}
-              onBlur={handleSeparatorBlur}
-              className="bg-transparent border-b border-blue-500 outline-none text-center"
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-            />
-          ) : (
-            app.name || '分隔符'
-          )}
+      <>
+        <div
+          ref={setNodeRef}
+          style={style}
+          {...attributes}
+          {...listeners}
+          onContextMenu={handleContextMenu}
+          onDoubleClick={handleSeparatorDoubleClick}
+          className="col-span-full w-full flex items-center py-2 cursor-grab active:cursor-grabbing"
+        >
+          <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
+          <div className="px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+            {isEditingSeparator ? (
+              <input
+                autoFocus
+                value={separatorName}
+                onChange={(e) => setSeparatorName(e.target.value)}
+                onKeyDown={handleSeparatorKeyDown}
+                onBlur={handleSeparatorBlur}
+                className="bg-transparent border-b border-blue-500 outline-none text-center"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              />
+            ) : (
+              app.name || '分隔符'
+            )}
+          </div>
+          <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
         </div>
-        <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
-      </div>
+        {renderContextMenu()}
+      </>
     );
   }
 
@@ -128,75 +178,32 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRename }) => 
         {...listeners}
         onDoubleClick={handleLaunch}
         onContextMenu={handleContextMenu}
-        className="flex flex-col items-center justify-center p-4 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 cursor-grab active:cursor-grabbing"
+        className="aspect-square w-full flex flex-col items-center justify-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 cursor-grab active:cursor-grabbing"
         aria-label={`双击启动 ${app.name}`}
-        title={`双击打开: ${app.executable_path || app.url}`}
+        title={`双击打开: ${app.executablePath || app.url}`}
       >
-        {app.icon_base64 ? (
+        {app.iconBase64 ? (
           <img
-            src={app.icon_base64}
+            src={app.iconBase64}
             alt={`${app.name} icon`}
-            className="w-12 h-12 mb-2 rounded-xl object-contain shadow-sm bg-transparent pointer-events-none"
+            className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
           />
         ) : (
-          <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-2xl flex items-center justify-center text-xl font-bold mb-2 shadow-sm pointer-events-none">
+          <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-lg flex items-center justify-center text-xl font-bold mb-2 shadow-sm pointer-events-none">
             {app.name.charAt(0).toUpperCase()}
           </div>
         )}
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate w-full text-center pointer-events-none">
+        <span className="text-xs font-medium text-gray-700 dark:text-gray-200 text-center pointer-events-none leading-tight break-words line-clamp-2 w-full">
           {app.name}
         </span>
         {app.shortcut && (
-          <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded pointer-events-none">
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded pointer-events-none">
             {app.shortcut}
           </span>
         )}
       </button>
 
-      {contextMenu && (
-        <>
-          <div 
-            className="fixed inset-0 z-40" 
-            onClick={closeContextMenu}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              closeContextMenu();
-            }}
-          />
-          <div
-            className="fixed z-50 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 shadow-2xl rounded-xl py-1 w-24 overflow-visible"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Level 1 Item: Properties */}
-            {app.type !== 'separator' && (
-              <ContextMenuItem 
-                label="编辑属性" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditProperties?.(app);
-                  closeContextMenu();
-                }}
-              />
-            )}
-
-            <div className="h-px bg-gray-200/50 dark:bg-gray-700/50 my-1 mx-2" />
-
-            {/* Delete Button */}
-            <button
-                className="w-full text-left px-3 py-1.5 text-xs font-medium transition-colors hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 focus-visible:outline-none relative z-50"
-                onPointerDown={(e) => e.stopPropagation()}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  onRemove?.(app.id);
-                  closeContextMenu();
-                }}
-              >
-                删除
-              </button>
-            </div>
-          </>
-        )}
-      </>
-    );
+      {renderContextMenu()}
+    </>
+  );
 };

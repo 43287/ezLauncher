@@ -93,11 +93,10 @@ export const ContextMenuItem: React.FC<ContextMenuItemProps> = ({ label, onClick
   if (!hasSubmenu) {
     return (
       <button 
-        onMouseDown={(e) => {
+        onClick={(e) => {
           e.stopPropagation();
           if (onClick) onClick(e);
         }}
-        onPointerDown={(e) => e.stopPropagation()}
         className={`w-full px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 focus-visible:outline-none relative z-50 ${className}`}
       >
         {label}
