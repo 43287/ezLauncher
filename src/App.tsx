@@ -68,7 +68,7 @@ function App() {
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
 
   useTauriEvents(setIsVisible);
-  useGlobalDrag(apps, setApps, activeLeftTab, activeTopTab, setIsDraggingFile, setHoveredItemId);
+  useGlobalDrag(setIsDraggingFile, setHoveredItemId);
 
   const handleAppAdd = (newApp: LaunchItem) => {
     addApp(newApp);

@@ -1,1 +1,2 @@
-// UI layer
+pub mod tray;
+pub mod window;

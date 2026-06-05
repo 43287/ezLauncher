@@ -1,0 +1,27 @@
+import { invoke } from '@tauri-apps/api/core';
+
+export const tauriApi = {
+  loadSettings: async (portable: boolean): Promise<string> => {
+    return invoke<string>('load_settings', { portable });
+  },
+
+  saveSettings: async (portable: boolean, settingsJson: string): Promise<void> => {
+    return invoke<void>('save_settings', { portable, settingsJson });
+  },
+
+  launchApp: async (executablePath: string, args: string[], runAsAdmin: boolean): Promise<void> => {
+    return invoke<void>('launch_app', { executablePath, args, runAsAdmin });
+  },
+
+  hideWindow: async (): Promise<void> => {
+    return invoke<void>('hide_window');
+  },
+
+  extractFileInfo: async (filePath: string): Promise<any> => {
+    return invoke<any>('extract_file_info', { filePath });
+  },
+
+  restartAsAdmin: async (): Promise<void> => {
+    return invoke<void>('restart_as_admin');
+  },
+};

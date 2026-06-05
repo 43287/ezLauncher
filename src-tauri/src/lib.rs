@@ -1,16 +1,16 @@
 use tauri::Manager;
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 use tauri::Emitter;
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
+use std::sync::{Mutex, OnceLock};
+use std::collections::HashMap;
 
 pub mod domain;
 pub mod services;
 pub mod application;
 pub mod ui;
 
-fn trigger_hide_animation(window: &tauri::WebviewWindow) {
+pub fn trigger_hide_animation(window: &tauri::WebviewWindow) {
     let _ = window.emit("force_hide_animation", ());
     let win_clone = window.clone();
     std::thread::spawn(move || {
@@ -19,10 +19,15 @@ fn trigger_hide_animation(window: &tauri::WebviewWindow) {
     });
 }
 
-fn trigger_show_animation(window: &tauri::WebviewWindow) {
+pub fn trigger_show_animation(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.set_focus(); // 确保强制夺取焦点
     let _ = window.emit("force_show_animation", ());
+}
+
+fn icon_cache() -> &'static Mutex<HashMap<String, Vec<u8>>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Vec<u8>>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 #[tauri::command]
@@ -32,6 +37,30 @@ fn hide_window(window: tauri::WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::System::Threading::CreateMutexW;
+        use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
+        use widestring::U16CString;
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONWARNING};
+
+        let mutex_name = U16CString::from_str("Global\\ezLauncher_SingleInstance_Mutex").unwrap();
+        unsafe {
+            let _mutex = CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr()));
+            if GetLastError() == ERROR_ALREADY_EXISTS {
+                // 如果发现已经有实例在运行，并且当前启动不是作为 admin-proxy 启动（即用户双击本体），则弹窗并退出
+                let args: Vec<String> = std::env::args().collect();
+                if !args.contains(&"--admin-proxy".to_string()) {
+                    let msg = U16CString::from_str("ezLauncher 已经在运行中。").unwrap();
+                    let title = U16CString::from_str("提示").unwrap();
+                    MessageBoxW(None, PCWSTR(msg.as_ptr()), PCWSTR(title.as_ptr()), MB_OK | MB_ICONWARNING);
+                    std::process::exit(0);
+                }
+            }
+        }
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
         .init();
@@ -39,7 +68,17 @@ pub fn run() {
     let args: Vec<String> = std::env::args().collect();
     if args.contains(&"--admin-proxy".to_string()) {
         tracing::info!("====> 启动 Admin Proxy 模式...");
-        crate::services::proxy_server::run_proxy_server();
+        let mut expected_pid = None;
+        let mut expected_token = None;
+        
+        if let Some(pos) = args.iter().position(|a| a == "--admin-proxy") {
+            if args.len() > pos + 2 {
+                expected_pid = args[pos + 1].parse::<u32>().ok();
+                expected_token = Some(args[pos + 2].clone());
+            }
+        }
+        
+        crate::services::proxy_server::run_proxy_server(expected_pid, expected_token);
         return;
     }
 
@@ -69,6 +108,7 @@ pub fn run() {
     }
 
     builder
+        .manage(crate::services::execution_service::ExecutionService::new())
         .register_uri_scheme_protocol("ezicon", |_app, request| {
             let uri_str = request.uri().to_string();
             tracing::info!("ezicon request: {}", uri_str);
@@ -80,10 +120,17 @@ pub fn run() {
             
             #[cfg(target_os = "windows")]
             {
-                if let Ok(data) = systemicons::get_icon(&decoded_path, 32) {
-                    icon_data = data;
+                let cache = icon_cache().lock().unwrap();
+                if let Some(cached) = cache.get(&decoded_path) {
+                    icon_data = cached.clone();
                 } else {
-                    tracing::warn!("Failed to extract icon for {}", decoded_path);
+                    drop(cache); // 释放锁以免阻塞其他请求
+                    if let Ok(data) = systemicons::get_icon(&decoded_path, 32) {
+                        icon_data = data.clone();
+                        icon_cache().lock().unwrap().insert(decoded_path.clone(), data);
+                    } else {
+                        tracing::warn!("Failed to extract icon for {}", decoded_path);
+                    }
                 }
             }
 
@@ -93,109 +140,53 @@ pub fn run() {
                 .body(icon_data)
                 .unwrap()
         })
-        .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             application::commands::launch_app,
             application::commands::extract_file_info,
             application::commands::restart_as_admin,
+            application::commands::get_store_path,
+            application::commands::migrate_store_data,
+            application::commands::load_settings,
+            application::commands::save_settings,
             hide_window
         ])
         .setup(|app| {
-            #[cfg(desktop)]
-            {
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
-                let _ = app.global_shortcut().register(shortcut);
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                if let Some(window) = app.get_webview_window("main") {
-                    let hwnd = window.hwnd().unwrap().0 as isize;
-                    use windows::Win32::Foundation::HWND;
-                    use windows::Win32::UI::WindowsAndMessaging::{
-                        ChangeWindowMessageFilterEx, MSGFLT_ALLOW,
-                    };
-                    let hwnd = HWND(hwnd as *mut _);
-                    const WM_DROPFILES: u32 = 0x0233;
-                    const WM_COPYDATA: u32 = 0x004A;
-                    const WM_COPYGLOBALDATA: u32 = 0x0049;
-
-                    unsafe {
-                        let _ = ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, None);
-                        let _ = ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, None);
-                        let _ = ChangeWindowMessageFilterEx(hwnd, WM_COPYGLOBALDATA, MSGFLT_ALLOW, None);
-                    }
-                    tracing::info!("====> 已尝试为管理员窗口豁免拖放相关消息 (WM_DROPFILES, WM_COPYDATA, WM_COPYGLOBALDATA)");
-                }
-            }
-
-            let show_i = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
-
-            let _tray = TrayIconBuilder::new()
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .icon(app.default_window_icon().unwrap().clone())
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => {
-                        #[cfg(target_os = "windows")]
-                        {
-                            // 尝试向 Proxy 发送退出指令
-                            use interprocess::local_socket::{prelude::*, GenericNamespaced, ToNsName};
-                            use std::io::Write;
-                            if let Ok(name) = crate::services::proxy_server::PROXY_PIPE_NAME.to_ns_name::<GenericNamespaced>() {
-                                if let Ok(mut stream) = LocalSocketStream::connect(name) {
-                                    let cmd = crate::services::proxy_server::ProxyCommand {
-                                        path: "".to_string(),
-                                        args: None,
-                                        action: Some("shutdown".to_string()),
-                                    };
-                                    if let Ok(payload) = serde_json::to_vec(&cmd) {
-                                        let _ = stream.write_all(&payload);
-                                    }
-                                }
-                            }
-                        }
-                        app.exit(0);
-                    }
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let is_visible = window.is_visible().unwrap_or(false);
-                            let is_focused = window.is_focused().unwrap_or(false);
-                            if is_visible && is_focused {
-                                trigger_hide_animation(&window);
-                            } else {
-                                trigger_show_animation(&window);
-                            }
-                        }
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let is_visible = window.is_visible().unwrap_or(false);
-                            let is_focused = window.is_focused().unwrap_or(false);
-                            if is_visible && is_focused {
-                                trigger_hide_animation(&window);
-                            } else {
-                                trigger_show_animation(&window);
-                            }
-                        }
-                    }
-                })
-                .build(app)?;
+            let _ = crate::services::hotkey_service::setup_hotkey(app);
+            let _ = crate::ui::window::setup_window(app);
+            let _ = crate::ui::tray::setup_tray(app);
 
             Ok(())
+        })
+        .on_window_event(|_window, event| {
+            // 当主窗口被销毁或应用退出时，清理代理进程
+            if let tauri::WindowEvent::Destroyed = event {
+                use interprocess::local_socket::prelude::*;
+                use interprocess::local_socket::ToNsName;
+                use std::io::Write;
+                
+                let name = match crate::services::proxy_server::PROXY_PIPE_NAME.to_ns_name::<interprocess::local_socket::GenericNamespaced>() {
+                    Ok(n) => n,
+                    Err(_) => return,
+                };
+                
+                if let Ok(mut stream) = LocalSocketStream::connect(name) {
+                    let auth = crate::services::proxy_server::get_or_init_auth();
+                    let token = auth.reveal();
+                    
+                    let cmd = crate::services::proxy_server::ProxyCommand {
+                        path: "".to_string(),
+                        args: None,
+                        action: Some("shutdown".to_string()),
+                        pid: Some(auth.pid),
+                        token: Some(token),
+                    };
+                    if let Ok(payload) = serde_json::to_vec(&cmd) {
+                        let _ = stream.write_all(&payload);
+                    }
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

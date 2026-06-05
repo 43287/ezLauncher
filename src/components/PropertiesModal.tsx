@@ -1,5 +1,11 @@
 import React, { useState } from "react";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 import { LaunchItem } from "../types";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface PropertiesModalProps {
   app: LaunchItem;
@@ -7,10 +13,87 @@ interface PropertiesModalProps {
   onSave: (updatedApp: LaunchItem) => void;
 }
 
+// 提取的 UI 小组件
+const InputGroup: React.FC<{
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+}> = ({ label, value, onChange, placeholder, multiline }) => (
+  <div className={cn("flex justify-between", multiline ? "items-start" : "items-center")}>
+    <div className={cn("text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap", multiline && "pt-1")}>
+      {label}
+    </div>
+    <div className="ml-4 flex-1 max-w-[200px]">
+      {multiline ? (
+        <textarea
+          value={value}
+          aria-label={label}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          rows={3}
+          className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 resize-none"
+        />
+      ) : (
+        <input
+          type="text"
+          value={value}
+          aria-label={label}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+        />
+      )}
+    </div>
+  </div>
+);
+
+const ToggleGroup: React.FC<{
+  label: string;
+  checked: boolean;
+  onChange: (val: boolean) => void;
+}> = ({ label, checked, onChange }) => (
+  <div className="flex justify-between items-center">
+    <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">{label}</div>
+    <div className="ml-4 flex-shrink-0">
+      <label className="relative inline-flex items-center cursor-pointer">
+        <input
+          type="checkbox"
+          className="sr-only peer"
+          aria-label={label}
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <div className="w-10 h-5 bg-gray-300 dark:bg-gray-600 rounded-full peer peer-checked:bg-blue-500 peer-focus:ring-2 peer-focus:ring-blue-300 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+      </label>
+    </div>
+  </div>
+);
+
 export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, onSave }) => {
   const [activeCategory, setActiveCategory] = useState<'通用' | '图标' | '高级'>('通用');
   const categories = ['通用', '图标', '高级'];
   const wheelTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const [isClosing, setIsClosing] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+
+  React.useEffect(() => {
+    setIsVisible(true);
+    return () => {
+      if (wheelTimeoutRef.current) {
+        clearTimeout(wheelTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+    }, 200);
+  };
 
   const [name, setName] = useState(app.name);
   const [shortcut, setShortcut] = useState(app.shortcut || "");
@@ -34,17 +117,17 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
       iconUrl,
       // args, runAsAdmin could be added to LaunchItem in the future
     });
-    onClose();
+    handleClose();
   };
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity duration-200 ${isClosing || !isVisible ? 'opacity-0' : 'opacity-100'}`}
+      onClick={handleClose}
       onWheel={(e) => e.stopPropagation()}
     >
       <div 
-        className="bg-white/95 dark:bg-gray-900/95 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl shadow-2xl w-[500px] h-[432px] mx-8 flex flex-col overflow-hidden"
+        className={`bg-white/95 dark:bg-gray-900/95 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl shadow-2xl w-[500px] h-[432px] mx-8 flex flex-col overflow-hidden transition-all duration-200 ${isClosing || !isVisible ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -53,7 +136,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
             {app.name === "新建快捷方式" ? "添加快捷方式" : "属性设置"}
           </h2>
           <button 
-            onClick={onClose} 
+            onClick={handleClose} 
             className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,62 +185,24 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
           <div className="flex-1 p-4 space-y-6 overflow-y-auto">
             {activeCategory === '通用' && (
               <>
-                <div className="flex justify-between items-center">
-                  <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">名称</div>
-                  <div className="ml-4 flex-1 max-w-[200px]">
-                    <input
-                      type="text"
-                      value={name}
-                      aria-label="名称"
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-                    />
-                  </div>
-                </div>
+                <InputGroup label="名称" value={name} onChange={setName} />
 
                 {app.type === 'app' && (
-                  <div className="flex justify-between items-center">
-                    <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">目标路径</div>
-                    <div className="ml-4 flex-1 max-w-[200px]">
-                      <input
-                        type="text"
-                        value={executablePath}
-                        aria-label="目标路径"
-                        onChange={(e) => setExecutablePath(e.target.value)}
-                        className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-                      />
-                    </div>
-                  </div>
+                  <InputGroup label="目标路径" value={executablePath} onChange={setExecutablePath} multiline />
                 )}
 
                 {app.type === 'link' && (
-                  <div className="flex justify-between items-center">
-                    <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">URL</div>
-                    <div className="ml-4 flex-1 max-w-[200px]">
-                      <input
-                        type="text"
-                        value={url}
-                        aria-label="URL"
-                        onChange={(e) => setUrl(e.target.value)}
-                        className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-                      />
-                    </div>
-                  </div>
+                  <InputGroup label="URL" value={url} onChange={setUrl} />
                 )}
+
                 {app.type === 'app' && (
-                  <div className="flex justify-between items-start">
-                    <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap pt-1">启动参数</div>
-                    <div className="ml-4 flex-1 max-w-[200px]">
-                      <textarea
-                        value={args}
-                        aria-label="启动参数"
-                        onChange={(e) => setArgs(e.target.value)}
-                        placeholder="如: --hidden\n每行一个参数"
-                        rows={3}
-                        className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 resize-none"
-                      />
-                    </div>
-                  </div>
+                  <InputGroup 
+                    label="启动参数" 
+                    value={args} 
+                    onChange={setArgs} 
+                    placeholder="如: --hidden\n每行一个参数" 
+                    multiline 
+                  />
                 )}
               </>
             )}
@@ -219,38 +264,19 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
 
             {activeCategory === '高级' && (
               <>
-                <div className="flex justify-between items-center">
-                  <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">全局快捷键</div>
-                  <div className="ml-4 flex-1 max-w-[200px]">
-                    <input
-                      type="text"
-                      value={shortcut}
-                      aria-label="全局快捷键"
-                      onChange={(e) => setShortcut(e.target.value)}
-                      placeholder="如: Ctrl+Shift+A"
-                      className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-                    />
-                  </div>
-                </div>
+                <InputGroup 
+                  label="全局快捷键" 
+                  value={shortcut} 
+                  onChange={setShortcut} 
+                  placeholder="如: Ctrl+Shift+A" 
+                />
 
                 {app.type === 'app' && (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">管理员权限</div>
-                      <div className="ml-4 flex-shrink-0">
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="sr-only peer"
-                            aria-label="管理员权限"
-                            checked={runAsAdmin}
-                            onChange={(e) => setRunAsAdmin(e.target.checked)}
-                          />
-                          <div className="w-10 h-5 bg-gray-300 dark:bg-gray-600 rounded-full peer peer-checked:bg-blue-500 peer-focus:ring-2 peer-focus:ring-blue-300 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
-                        </label>
-                      </div>
-                    </div>
-                  </>
+                  <ToggleGroup 
+                    label="管理员权限" 
+                    checked={runAsAdmin} 
+                    onChange={setRunAsAdmin} 
+                  />
                 )}
               </>
             )}
@@ -260,7 +286,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
         {/* Footer */}
         <div className="px-6 py-2.5 border-t border-gray-200/50 dark:border-gray-800/50 flex justify-end space-x-3 bg-gray-50/50 dark:bg-gray-800/50">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
           >
             取消

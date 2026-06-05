@@ -1,6 +1,15 @@
 use std::str::FromStr;
-use tauri::AppHandle;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+use tauri::{App, AppHandle};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, Modifiers, Code};
+
+pub fn setup_hotkey(app: &mut App) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+        app.global_shortcut().register(shortcut).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 
 pub struct HotkeyService {
     app_handle: AppHandle,

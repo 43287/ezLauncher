@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useSettings } from '../hooks/useSettings';
 import { SettingSchema } from '../types';
 
@@ -54,6 +55,35 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const [activeCategory, setActiveCategory] = useState(categories[0]);
   const wheelTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [isVisible, setIsVisible] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [tooltipData, setTooltipData] = useState<{ text: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const timer = requestAnimationFrame(() => setIsVisible(true));
+    return () => cancelAnimationFrame(timer);
+  }, []);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+    }, 200);
+  };
+
+  const handleMouseEnter = (e: React.MouseEvent, text: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltipData({
+      text,
+      x: rect.right + 8,
+      y: rect.top + rect.height / 2
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setTooltipData(null);
+  };
+
   // 取消对 isLoaded 的渲染拦截，直接渲染配置窗口
   // 若尚未加载完毕，对应的控件会暂时展示 schema.defaultValue
 
@@ -102,95 +132,112 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   };
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-      onWheel={(e) => e.stopPropagation()}
-    >
+    <>
       <div 
-        className="bg-white/95 dark:bg-gray-900/95 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl shadow-2xl w-[500px] h-[432px] mx-8 flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+        className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity duration-200 ${isVisible && !isClosing ? 'opacity-100' : 'opacity-0'}`}
+        onClick={handleClose}
+        onWheel={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex justify-between items-center px-6 py-3 border-b border-gray-200/50 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-800/50">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">设置</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
-            aria-label="关闭设置"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Content (2 Columns) */}
         <div 
-          className="flex flex-1 overflow-hidden"
-          onWheel={(e) => {
-            e.stopPropagation();
-            // 在整个设置内容区支持滚轮切换分类，并且进行节流处理避免滚动过快
-            if (!wheelTimeoutRef.current) {
-              const currentIndex = categories.findIndex(c => c === activeCategory);
-              if (e.deltaY > 0 && currentIndex < categories.length - 1) {
-                setActiveCategory(categories[currentIndex + 1]);
-              } else if (e.deltaY < 0 && currentIndex > 0) {
-                setActiveCategory(categories[currentIndex - 1]);
-              }
-              wheelTimeoutRef.current = setTimeout(() => {
-                wheelTimeoutRef.current = null;
-              }, 150);
-            }
-          }}
+          className={`bg-white/95 dark:bg-gray-900/95 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl shadow-2xl w-[500px] h-[432px] mx-8 flex flex-col overflow-hidden transition-all duration-200 transform ${isVisible && !isClosing ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
+          onClick={(e) => e.stopPropagation()}
         >
-          {/* Left Sidebar (Categories) */}
-          <div 
-            className="w-1/5 border-r border-gray-200/50 dark:border-gray-800/50 bg-gray-50/30 dark:bg-gray-800/30 p-2 space-y-1 overflow-y-auto flex flex-col items-center"
-          >
-            {categories.map(category => (
-              <button
-                key={category}
-                onClick={() => setActiveCategory(category)}
-                className={`w-full text-center px-2 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                  activeCategory === category 
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-                style={{ whiteSpace: 'nowrap' }}
-              >
-                {category}
-              </button>
-            ))}
+          {/* Header */}
+          <div className="flex justify-between items-center px-6 py-3 border-b border-gray-200/50 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-800/50">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">设置</h2>
+            <button
+              onClick={handleClose}
+              className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+              aria-label="关闭设置"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
-          {/* Right Content (Settings Items) */}
-          <div className="flex-1 p-4 space-y-6">
-            {SETTINGS_SCHEMA.filter(schema => schema.category === activeCategory).map((schema) => (
-              <div key={schema.id} className="flex justify-between items-center">
-                <div className="flex items-center space-x-1">
-                  <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">{schema.label}</div>
-                  {schema.description && (
-                    <div className="relative group flex items-center">
-                      <div className="w-3.5 h-3.5 rounded-full border border-gray-400 text-gray-500 dark:border-gray-500 dark:text-gray-400 flex items-center justify-center text-[9px] font-bold cursor-help">
-                        ?
+          {/* Content (2 Columns) */}
+          <div 
+            className="flex flex-1 overflow-hidden"
+            onWheel={(e) => {
+              e.stopPropagation();
+              // 在整个设置内容区支持滚轮切换分类，并且进行节流处理避免滚动过快
+              if (!wheelTimeoutRef.current) {
+                const currentIndex = categories.findIndex(c => c === activeCategory);
+                if (e.deltaY > 0 && currentIndex < categories.length - 1) {
+                  setActiveCategory(categories[currentIndex + 1]);
+                } else if (e.deltaY < 0 && currentIndex > 0) {
+                  setActiveCategory(categories[currentIndex - 1]);
+                }
+                wheelTimeoutRef.current = setTimeout(() => {
+                  wheelTimeoutRef.current = null;
+                }, 150);
+              }
+            }}
+          >
+            {/* Left Sidebar (Categories) */}
+            <div 
+              className="w-1/5 border-r border-gray-200/50 dark:border-gray-800/50 bg-gray-50/30 dark:bg-gray-800/30 p-2 space-y-1 overflow-y-auto flex flex-col items-center"
+            >
+              {categories.map(category => (
+                <button
+                  key={category}
+                  onClick={() => setActiveCategory(category)}
+                  className={`w-full text-center px-2 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    activeCategory === category 
+                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+
+            {/* Right Content (Settings Items) */}
+            <div className="flex-1 p-4 space-y-6">
+              {SETTINGS_SCHEMA.filter(schema => schema.category === activeCategory).map((schema) => (
+                <div key={schema.id} className="flex justify-between items-center">
+                  <div className="flex items-center space-x-1">
+                    <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">{schema.label}</div>
+                    {schema.description && (
+                      <div 
+                        className="relative flex items-center"
+                        onMouseEnter={(e) => handleMouseEnter(e, schema.description!)}
+                        onMouseLeave={handleMouseLeave}
+                      >
+                        <div className="w-3.5 h-3.5 rounded-full border border-gray-400 text-gray-500 dark:border-gray-500 dark:text-gray-400 flex items-center justify-center text-[9px] font-bold cursor-help">
+                          ?
+                        </div>
                       </div>
-                      <div className="absolute left-full ml-2 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 pointer-events-none">
-                        {schema.description}
-                        {/* Tooltip arrow */}
-                        <div className="absolute top-1/2 -left-1 -mt-1 border-4 border-transparent border-r-gray-800"></div>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  <div className="ml-4 flex-shrink-0">
+                    {renderControl(schema)}
+                  </div>
                 </div>
-                <div className="ml-4 flex-shrink-0">
-                  {renderControl(schema)}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      {tooltipData && createPortal(
+        <div 
+          className="fixed z-[60] p-2 bg-gray-800 text-white text-xs rounded shadow-lg pointer-events-none transition-opacity"
+          style={{
+            left: tooltipData.x,
+            top: tooltipData.y,
+            transform: 'translateY(-50%)',
+            maxWidth: '200px',
+            wordWrap: 'break-word'
+          }}
+        >
+          {tooltipData.text}
+          <div className="absolute top-1/2 -left-1 -mt-1 border-4 border-transparent border-r-gray-800"></div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 };

@@ -1,38 +1,41 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { load, Store } from '@tauri-apps/plugin-store';
+import { tauriApi } from '../api/tauri';
 
 interface SettingsContextType {
-  store: Store | null;
   settings: Record<string, any>;
   updateSetting: (key: string, value: any) => Promise<void>;
   isLoaded: boolean;
+  isPortable: boolean;
+  setPortableMode: (portable: boolean) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsContextType>({
-  store: null,
   settings: {},
   updateSetting: async () => {},
   isLoaded: false,
+  isPortable: true,
+  setPortableMode: async () => {},
 });
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [store, setStore] = useState<Store | null>(null);
   const [settings, setSettings] = useState<Record<string, any>>({});
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isPortable, setIsPortable] = useState(true);
 
   useEffect(() => {
-    let currentStore: Store | null = null;
-
     async function initStore() {
       try {
-        currentStore = await load('settings.json', { autoSave: true, defaults: {} } as any);
-        setStore(currentStore);
-
-        const keys = await currentStore.keys();
-        const initialSettings: Record<string, any> = {};
-        for (const key of keys) {
-          initialSettings[key] = await currentStore.get(key);
+        const portableFlag = localStorage.getItem('portable_mode') !== 'false';
+        setIsPortable(portableFlag);
+        
+        const settingsJsonStr = await tauriApi.loadSettings(portableFlag);
+        let initialSettings = {};
+        try {
+            initialSettings = JSON.parse(settingsJsonStr);
+        } catch (e) {
+            console.error('Failed to parse settings JSON', e);
         }
+        
         setSettings(initialSettings);
         setIsLoaded(true);
       } catch (err) {
@@ -48,15 +51,25 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateSetting = async (key: string, value: any) => {
-    if (store) {
-      await store.set(key, value);
-      await store.save(); // autoSave is true, but manual save ensures it's written immediately
-      setSettings((prev) => ({ ...prev, [key]: value }));
-    }
+    setSettings((prev) => {
+      const newSettings = { ...prev, [key]: value };
+      // Save in background
+      tauriApi.saveSettings(isPortable, JSON.stringify(newSettings))
+        .catch(err => {
+          console.error('Failed to save settings:', err);
+        });
+      return newSettings;
+    });
+  };
+
+  const setPortableMode = async (portable: boolean) => {
+    localStorage.setItem('portable_mode', portable.toString());
+    setIsPortable(portable);
+    // Setting toggle requires restart, handled by component
   };
 
   return (
-    <SettingsContext.Provider value={{ store, settings, updateSetting, isLoaded }}>
+    <SettingsContext.Provider value={{ settings, updateSetting, isLoaded, isPortable, setPortableMode }}>
       {children}
     </SettingsContext.Provider>
   );

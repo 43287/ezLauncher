@@ -52,12 +52,6 @@ export const useAppStore = create<AppState>((set) => ({
       categoryId: newApp.categoryId || state.activeLeftTab,
       columnId: newApp.columnId || state.activeTopTab
     };
-    if (appWithIds.type === 'app' && appWithIds.executablePath) {
-      const existingPaths = new Set(state.apps.filter(a => a.type === 'app' && a.executablePath).map(a => a.executablePath));
-      if (existingPaths.has(appWithIds.executablePath)) {
-        return state;
-      }
-    }
     return { apps: [...state.apps, appWithIds] };
   }),
 

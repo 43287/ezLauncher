@@ -1,37 +1,25 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { tauriApi } from "../api/tauri";
 import { LaunchItem } from "../types";
+import { useAppStore } from "../store/useAppStore";
 
 export function useGlobalDrag(
-  apps: LaunchItem[],
-  setApps: React.Dispatch<React.SetStateAction<LaunchItem[]>>,
-  activeLeftTab: string,
-  activeTopTab: string,
   setIsDraggingFile: (dragging: boolean) => void,
   setHoveredItemId: (id: string | null) => void
 ) {
   const hoveredItemIdRef = useRef<string | null>(null);
-  const prevAppsRef = useRef(apps);
-  const activeTabsRef = useRef({ left: activeLeftTab, top: activeTopTab });
-
-  useEffect(() => {
-    prevAppsRef.current = apps;
-  }, [apps]);
-
-  useEffect(() => {
-    activeTabsRef.current = { left: activeLeftTab, top: activeTopTab };
-  }, [activeLeftTab, activeTopTab]);
 
   useEffect(() => {
     let unlistenDrop: (() => void) | undefined;
+    let isCancelled = false;
 
     const setupDragDrop = async () => {
       try {
         const win = getCurrentWindow();
         let isExtracting = false;
 
-        unlistenDrop = await win.onDragDropEvent(async (event) => {
+        const unlisten = await win.onDragDropEvent(async (event) => {
           if (event.payload.type === 'enter' || event.payload.type === 'over') {
             setIsDraggingFile(true);
             const pos = (event.payload as any).position;
@@ -60,17 +48,15 @@ export function useGlobalDrag(
             const paths = event.payload.paths;
             if (!paths || paths.length === 0) return;
 
+            const state = useAppStore.getState();
+
             // 如果悬停在某个应用上，则使用该应用打开拖放的文件
             if (hoveredId) {
-              const targetApp = prevAppsRef.current.find(a => a.id === hoveredId);
+              const targetApp = state.apps.find(a => a.id === hoveredId);
               if (targetApp && targetApp.type === 'app' && targetApp.executablePath) {
                 try {
-                  await invoke("launch_app", { 
-                    executablePath: targetApp.executablePath,
-                    args: paths,
-                    runAsAdmin: false
-                  });
-                  await invoke("hide_window");
+                  await tauriApi.launchApp(targetApp.executablePath, paths, false);
+                  await tauriApi.hideWindow();
                 } catch (error) {
                   console.error("Failed to launch app with args:", error);
                 }
@@ -90,7 +76,7 @@ export function useGlobalDrag(
                   finalName = fileNameMatch[0].replace(/\.[^/.]+$/, "");
                 }
 
-                const info: any = await invoke("extract_file_info", { filePath: path });
+                const info = await tauriApi.extractFileInfo(path);
                 finalName = info.name || finalName;
                 let iconUrl = info.iconUrl || undefined;
 
@@ -101,19 +87,11 @@ export function useGlobalDrag(
                   executablePath: path,
                   iconUrl,
                   shortcut: null,
-                  categoryId: activeTabsRef.current.left,
-                  columnId: activeTabsRef.current.top
+                  categoryId: state.activeLeftTab,
+                  columnId: state.activeTopTab
                 };
                 
-                setApps(prev => {
-                  if (newApp.type === 'app' && newApp.executablePath) {
-                    const existingPaths = new Set(prev.filter(a => a.type === 'app' && a.executablePath).map(a => a.executablePath));
-                    if (existingPaths.has(newApp.executablePath)) {
-                      return prev;
-                    }
-                  }
-                  return [...prev, newApp];
-                });
+                state.addApp(newApp);
               } catch (err) {
                 console.error("Failed to extract file info:", err);
               }
@@ -123,6 +101,12 @@ export function useGlobalDrag(
             }, 100);
           }
         });
+
+        if (isCancelled) {
+          unlisten();
+        } else {
+          unlistenDrop = unlisten;
+        }
       } catch (error) {
         console.error("Failed to setup drag and drop events:", error);
       }
@@ -131,7 +115,8 @@ export function useGlobalDrag(
     setupDragDrop();
 
     return () => {
+      isCancelled = true;
       if (unlistenDrop) unlistenDrop();
     };
-  }, [setApps, setIsDraggingFile, setHoveredItemId]);
+  }, [setIsDraggingFile, setHoveredItemId]);
 }

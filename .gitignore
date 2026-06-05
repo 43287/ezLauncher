@@ -25,6 +25,10 @@ src-tauri/Cargo.lock
 # Trae AI specs and context
 .trae/
 
+# Docs and Output
+output/
+docs/
+
 # Editor directories and files
 .vscode/
 .idea

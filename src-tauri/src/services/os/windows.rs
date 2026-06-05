@@ -4,8 +4,14 @@ use std::time::Duration;
 use interprocess::local_socket::prelude::*;
 use interprocess::local_socket::ToNsName;
 use std::io::{Write, Read};
+use std::sync::Mutex;
+use lazy_static::lazy_static;
 
 const DETACHED_PROCESS: u32 = 0x00000008;
+
+lazy_static! {
+    static ref PROXY_STARTING_LOCK: Mutex<()> = Mutex::new(());
+}
 
 pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool) -> Result<(), String> {
     if run_as_admin {
@@ -13,10 +19,16 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, run_
             let name = crate::services::proxy_server::PROXY_PIPE_NAME.to_ns_name::<interprocess::local_socket::GenericNamespaced>().map_err(|e| e.to_string())?;
             let mut stream = LocalSocketStream::connect(name)
                 .map_err(|e| e.to_string())?;
+                
+            let auth = crate::services::proxy_server::get_or_init_auth();
+            let token = auth.reveal();
+            
             let cmd = crate::services::proxy_server::ProxyCommand {
                 path: executable_path.to_string(),
                 args: args.clone(),
                 action: None,
+                pid: Some(auth.pid),
+                token: Some(token),
             };
             let payload = serde_json::to_vec(&cmd).map_err(|e| e.to_string())?;
             stream.write_all(&payload).map_err(|e| e.to_string())?;
@@ -32,40 +44,54 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, run_
 
         if let Err(e) = send_command() {
             tracing::warn!("====> Proxy 连接失败: {}，尝试启动 Proxy Server", e);
+            
+            // 获取启动锁，如果已经被其他线程获取，则阻塞等待其完成启动过程
+            let _guard = PROXY_STARTING_LOCK.lock().unwrap();
+            
+            // 拿到锁后再尝试连接一次，可能在等待锁的过程中，其他线程已经成功拉起了 Proxy
+            if send_command().is_ok() {
+                return Ok(());
+            }
+
             let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
             let exe_str = exe_path.to_str().unwrap();
             
             tracing::info!("====> 正在拉起代理进程，路径: {}", exe_str);
             
-            use std::os::windows::ffi::OsStrExt;
-            use std::ffi::OsStr;
-            use windows::Win32::UI::Shell::ShellExecuteW;
-            use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+            use std::process::Command;
+            use std::os::windows::process::CommandExt;
             
-            let verb: Vec<u16> = OsStr::new("runas").encode_wide().chain(std::iter::once(0)).collect();
-            let file: Vec<u16> = OsStr::new(exe_str).encode_wide().chain(std::iter::once(0)).collect();
-            let args_w: Vec<u16> = OsStr::new("--admin-proxy").encode_wide().chain(std::iter::once(0)).collect();
+            let auth = crate::services::proxy_server::get_or_init_auth();
+            let token = auth.reveal();
+            tracing::info!("====> 自动生成 Proxy Token, PID: {}, UUID (obfuscated in memory): {}", auth.pid, token);
+            
+            let mut cmd = Command::new("powershell");
+            cmd.arg("-NoProfile")
+               .arg("-WindowStyle")
+               .arg("Hidden")
+               .arg("-Command")
+               .arg("Start-Process")
+               .arg("-FilePath")
+               .arg(format!("\"{}\"", exe_str))
+               .arg("-ArgumentList")
+               .arg(format!("\"--admin-proxy {} {}\"", auth.pid, token))
+               .arg("-WindowStyle")
+               .arg("Hidden")
+               .arg("-Verb")
+               .arg("RunAs");
+               
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
 
-            unsafe {
-                let result = ShellExecuteW(
-                    None,
-                    windows::core::PCWSTR(verb.as_ptr()),
-                    windows::core::PCWSTR(file.as_ptr()),
-                    windows::core::PCWSTR(args_w.as_ptr()),
-                    None,
-                    SW_HIDE,
-                );
-                
-                if result.0 as isize <= 32 {
-                    tracing::error!("====> ShellExecuteW 失败，返回值: {}", result.0 as isize);
-                } else {
-                    tracing::info!("====> ShellExecuteW 成功发送提权请求");
-                }
+            match cmd.spawn() {
+                Ok(_) => tracing::info!("====> PowerShell Start-Process 成功发送提权请求"),
+                Err(e) => tracing::error!("====> PowerShell 提权请求失败: {}", e),
             }
         
-            // Wait for proxy to start, retry every 100ms up to 3 seconds
+            // Wait for proxy to start, retry every 100ms up to 60 seconds (600 attempts)
+            // This gives the user plenty of time to interact with the UAC prompt
             let mut attempts = 0;
-            while attempts < 30 {
+            while attempts < 600 {
                 std::thread::sleep(Duration::from_millis(100));
                 if send_command().is_ok() {
                     return Ok(());
@@ -74,31 +100,28 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, run_
             }
             
             // Final Retry or fail
-            send_command().map_err(|e| format!("Proxy 重试失败: {}", e))?;
+            send_command().map_err(|e| format!("Proxy 重试失败 (等待 UAC 超时): {}", e))?;
         }
         return Ok(());
     }
 
-    let (mut cmd, is_explorer) = if std::env::args().any(|arg| arg == "--admin-proxy") {
-        // 如果当前进程本身就是 Proxy（已经是管理员），则直接用 cmd /c start 以继承管理员权限
-        (Command::new("cmd"), false)
-    } else {
-        // 否则用 explorer 降权启动
-        (Command::new("explorer.exe"), true)
-    };
+    if executable_path.starts_with(r"\\") {
+        return Err("Network paths starting with \\\\ are not allowed for security reasons.".to_string());
+    }
 
-    let mut args_str = String::new();
-    if let Some(args_vec) = args {
-        for arg in args_vec {
-            args_str.push_str(&format!(" \"{}\"", arg));
+    let is_proxy = std::env::args().any(|arg| arg == "--admin-proxy");
+
+    let mut cmd = if is_proxy {
+        let mut c = Command::new(executable_path);
+        if let Some(args_vec) = args {
+            c.args(args_vec);
         }
-    }
-    
-    if is_explorer {
-        cmd.raw_arg(format!("\"{}\"{}", executable_path, args_str));
+        c
     } else {
-        cmd.arg("/C").raw_arg(format!("start \"\" \"{}\"{}", executable_path, args_str));
-    }
+        let mut c = Command::new("explorer");
+        c.arg(executable_path);
+        c
+    };
     
     cmd.creation_flags(DETACHED_PROCESS);
     match cmd.spawn() {
