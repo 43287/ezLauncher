@@ -34,3 +34,4 @@ src-tauri/Cargo.lock
 *.njsproj
 *.sln
 *.sw?
+output/
