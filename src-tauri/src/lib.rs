@@ -75,6 +75,28 @@ pub fn run() {
                 let _ = app.global_shortcut().register(shortcut);
             }
 
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let hwnd = window.hwnd().unwrap().0 as isize;
+                    use windows::Win32::Foundation::HWND;
+                    use windows::Win32::UI::WindowsAndMessaging::{
+                        ChangeWindowMessageFilterEx, MSGFLT_ALLOW,
+                    };
+                    let hwnd = HWND(hwnd as *mut _);
+                    const WM_DROPFILES: u32 = 0x0233;
+                    const WM_COPYDATA: u32 = 0x004A;
+                    const WM_COPYGLOBALDATA: u32 = 0x0049;
+
+                    unsafe {
+                        let _ = ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, None);
+                        let _ = ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, None);
+                        let _ = ChangeWindowMessageFilterEx(hwnd, WM_COPYGLOBALDATA, MSGFLT_ALLOW, None);
+                    }
+                    println!("====> 已尝试为管理员窗口豁免拖放相关消息 (WM_DROPFILES, WM_COPYDATA, WM_COPYGLOBALDATA)");
+                }
+            }
+
             let show_i = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
