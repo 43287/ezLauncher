@@ -3,9 +3,9 @@ use crate::services::execution_service::{self, ExecutionService, ExtractedFileIn
 use crate::services::icon_service;
 
 #[command]
-pub fn launch_app(executable_path: String) -> Result<(), String> {
+pub fn launch_app(executable_path: String, args: Option<Vec<String>>) -> Result<(), String> {
     let service = ExecutionService::default();
-    service.launch_app(&executable_path)
+    service.launch_app(&executable_path, args)
 }
 
 #[command]

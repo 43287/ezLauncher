@@ -25,15 +25,21 @@ impl ExecutionService {
         Self
     }
 
-    pub fn launch_app(&self, executable_path: &str) -> Result<(), String> {
+    pub fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>) -> Result<(), String> {
 
-        println!("====> 尝试启动目标进程: {}", executable_path);
+        println!("====> 尝试启动目标进程: {} {:?}", executable_path, args);
         
         #[cfg(target_os = "windows")]
         {
             let mut cmd = Command::new("cmd");
+            let mut args_str = String::new();
+            if let Some(args_vec) = args {
+                for arg in args_vec {
+                    args_str.push_str(&format!(" \"{}\"", arg));
+                }
+            }
             // 使用 raw_arg 避免 Rust 的 Command 自动对双引号和空格进行错误转义
-            cmd.arg("/C").raw_arg(format!("start \"\" \"{}\"", executable_path));
+            cmd.arg("/C").raw_arg(format!("start \"\" \"{}\"{}", executable_path, args_str));
             cmd.creation_flags(DETACHED_PROCESS);
             match cmd.spawn() {
                 Ok(child) => {
@@ -57,6 +63,22 @@ impl ExecutionService {
             let mut cmd = Command::new("xdg-open");
             #[cfg(target_os = "linux")]
             cmd.arg(executable_path);
+
+            if let Some(args_vec) = args {
+                #[cfg(target_os = "macos")]
+                {
+                    cmd.arg("--args");
+                    for arg in args_vec {
+                        cmd.arg(arg);
+                    }
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    for arg in args_vec {
+                        cmd.arg(arg);
+                    }
+                }
+            }
 
             match cmd.spawn() {
                 Ok(child) => {
@@ -118,7 +140,7 @@ mod tests {
     fn test_launch_app_invalid_path() {
         let service = ExecutionService::new();
         #[allow(unused_variables)]
-        let result = service.launch_app("invalid_executable_path_12345.exe");
+        let result = service.launch_app("invalid_executable_path_12345.exe", None);
         // 对于 Windows 下使用 cmd /c start 的情况，spawn 总是会成功启动 cmd，
         // 故此处可能不再返回 err，我们可以跳过此处的强断言或修改逻辑
         #[cfg(not(target_os = "windows"))]

@@ -21,7 +21,7 @@ fn trigger_hide_animation(window: &tauri::WebviewWindow) {
 
 fn trigger_show_animation(window: &tauri::WebviewWindow) {
     let _ = window.show();
-    let _ = window.set_focus();
+    let _ = window.set_focus(); // 确保强制夺取焦点
     let _ = window.emit("force_show_animation", ());
 }
 
@@ -40,14 +40,18 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _req, event| {
                     if event.state == ShortcutState::Pressed {
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                trigger_hide_animation(&window);
-                            } else {
-                                trigger_show_animation(&window);
-                            }
+                    if let Some(window) = app.get_webview_window("main") {
+                        let is_visible = window.is_visible().unwrap_or(false);
+                        let is_focused = window.is_focused().unwrap_or(false);
+                        
+                        // 只有当窗口既可见又拥有焦点时，才收起面板；否则（被遮挡或隐藏）均唤出并置顶
+                        if is_visible && is_focused {
+                            trigger_hide_animation(&window);
+                        } else {
+                            trigger_show_animation(&window);
                         }
                     }
+                }
                 })
                 .build(),
         );

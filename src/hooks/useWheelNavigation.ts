@@ -1,0 +1,53 @@
+import { useEffect, useRef } from 'react';
+import { Tab } from '../types';
+
+export function useWheelNavigation(
+  editingTabId: string | null,
+  topTabs: Tab[],
+  activeTopTab: string,
+  setActiveTopTab: (id: string) => void,
+  leftTabs: Tab[],
+  activeLeftTab: string,
+  setActiveLeftTab: (id: string) => void
+) {
+  const wheelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (wheelTimeoutRef.current) clearTimeout(wheelTimeoutRef.current);
+    };
+  }, []);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (editingTabId) return;
+    
+    if (Math.abs(e.deltaX) < 10 && Math.abs(e.deltaY) < 10) return; // 忽略过小的滚动
+
+    if (wheelTimeoutRef.current) return;
+    wheelTimeoutRef.current = setTimeout(() => {
+      wheelTimeoutRef.current = null;
+    }, 150);
+
+    const isHorizontalScroll = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+
+    if (e.shiftKey || isHorizontalScroll) {
+      const currentIndex = topTabs.findIndex(t => t.id === activeTopTab);
+      const delta = isHorizontalScroll ? e.deltaX : e.deltaY;
+      
+      if (delta > 0) {
+        setActiveTopTab(topTabs[(currentIndex + 1) % topTabs.length].id);
+      } else if (delta < 0) {
+        setActiveTopTab(topTabs[(currentIndex - 1 + topTabs.length) % topTabs.length].id);
+      }
+    } else {
+      const currentIndex = leftTabs.findIndex(t => t.id === activeLeftTab);
+      if (e.deltaY > 0) {
+        setActiveLeftTab(leftTabs[(currentIndex + 1) % leftTabs.length].id);
+      } else if (e.deltaY < 0) {
+        setActiveLeftTab(leftTabs[(currentIndex - 1 + leftTabs.length) % leftTabs.length].id);
+      }
+    }
+  };
+
+  return { handleWheel };
+}

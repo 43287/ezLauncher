@@ -20,6 +20,7 @@ import {
 interface AppGridProps {
   apps: LaunchItem[];
   isDraggingFile?: boolean;
+  hoveredItemId?: string | null;
   onAppRemove?: (id: string) => void;
   onAppReorder?: (apps: LaunchItem[]) => void;
   onAppRename?: (id: string, newName: string) => void;
@@ -29,7 +30,7 @@ interface AppGridProps {
 /**
  * 应用网格组件，支持拖拽添加应用
  */
-export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, onAppRemove, onAppReorder, onAppRename, onEditProperties }) => {
+export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, hoveredItemId = null, onAppRemove, onAppReorder, onAppRename, onEditProperties }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -55,9 +56,11 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, 
 
   return (
       <div
-        className={`h-full w-full rounded-2xl transition-all duration-200 ${
+        className={`h-full w-full rounded-2xl transition-all duration-300 ease-out flex-1 ${
           isDraggingFile
-            ? "bg-blue-50 dark:bg-blue-900/20 border-2 border-dashed border-blue-400"
+            ? hoveredItemId 
+              ? "bg-transparent border-2 border-transparent" // Item hovered, no global highlight
+              : "bg-blue-50 dark:bg-blue-900/20 border-2 border-dashed border-blue-400"
             : "bg-transparent border-2 border-transparent"
         } ${apps.length === 0 ? '' : 'p-2'}`}
         role="region"
@@ -78,11 +81,12 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, 
             items={apps.map(app => app.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-4 items-start content-start">
+            <div className="flex flex-wrap gap-2 items-start content-start">
               {apps.map((app) => (
                 <ShortcutItem
                   key={app.id}
                   app={app}
+                  isHovered={hoveredItemId === app.id}
                   onRemove={onAppRemove}
                   onEditProperties={onEditProperties}
                   onRename={onAppRename}

@@ -14,6 +14,11 @@ export interface LaunchItem {
 
 export type SettingType = 'switch' | 'input' | 'select';
 
+export type Tab = {
+  id: string;
+  name: string;
+};
+
 export interface SettingOption {
   label: string;
   value: string;

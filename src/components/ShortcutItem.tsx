@@ -7,6 +7,7 @@ import { ContextMenuItem } from "./ContextMenuItem";
 
 interface ShortcutItemProps {
   app: LaunchItem;
+  isHovered?: boolean;
   onRemove?: (id: string) => void;
   onEditProperties?: (app: LaunchItem) => void;
   onRename?: (id: string, newName: string) => void;
@@ -16,7 +17,7 @@ interface ShortcutItemProps {
  * 快捷方式项组件
  * @param app 应用实体信息
  */
-export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRemove, onEditProperties, onRename }) => {
+export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = false, onRemove, onEditProperties, onRename }) => {
   const [isEditingSeparator, setIsEditingSeparator] = useState(false);
   const [separatorName, setSeparatorName] = useState(app.name);
 
@@ -32,7 +33,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRemove, onEdi
   } = useSortable({ id: app.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1 : 0,
@@ -141,9 +142,12 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRemove, onEdi
           style={style}
           {...attributes}
           {...listeners}
+          data-app-id={app.id}
           onContextMenu={handleContextMenu}
           onDoubleClick={handleSeparatorDoubleClick}
-          className="col-span-full w-full flex items-center py-2 cursor-grab active:cursor-grabbing"
+          className={`w-full flex items-center py-2 cursor-grab active:cursor-grabbing rounded-lg transition-all duration-300 ease-out h-[40px] shrink-0 ${
+            isHovered ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-400' : ''
+          }`}
         >
           <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
           <div className="px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
@@ -171,37 +175,43 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, onRemove, onEdi
 
   return (
     <>
-      <button
-        ref={setNodeRef}
-        style={style}
-        {...attributes}
-        {...listeners}
-        onDoubleClick={handleLaunch}
-        onContextMenu={handleContextMenu}
-        className="aspect-square w-full flex flex-col items-center justify-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 cursor-grab active:cursor-grabbing"
-        aria-label={`双击启动 ${app.name}`}
-        title={`双击打开: ${app.executablePath || app.url}`}
-      >
-        {app.iconBase64 ? (
-          <img
-            src={app.iconBase64}
-            alt={`${app.name} icon`}
-            className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
-          />
-        ) : (
-          <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-lg flex items-center justify-center text-xl font-bold mb-2 shadow-sm pointer-events-none">
-            {app.name.charAt(0).toUpperCase()}
-          </div>
-        )}
-        <span className="text-xs font-medium text-gray-700 dark:text-gray-200 text-center pointer-events-none leading-tight break-words line-clamp-2 w-full">
-          {app.name}
-        </span>
-        {app.shortcut && (
-          <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded pointer-events-none">
-            {app.shortcut}
+      <div className="flex justify-center shrink-0 w-[calc(25%-0.375rem)] sm:w-[calc(20%-0.4rem)] md:w-[calc(16.666%-0.416rem)]">
+        <button
+          ref={setNodeRef}
+          style={style}
+          {...attributes}
+          {...listeners}
+          data-app-id={app.id}
+          onDoubleClick={handleLaunch}
+          onContextMenu={handleContextMenu}
+          className={`aspect-square w-full max-w-[90px] flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 cursor-grab active:cursor-grabbing ${
+            isHovered 
+              ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-400' // Lighter highlight for drag-to-item
+              : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+          aria-label={`双击启动 ${app.name}`}
+        >
+          {app.iconBase64 ? (
+            <img
+              src={app.iconBase64}
+              alt={`${app.name} icon`}
+              className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
+            />
+          ) : (
+            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-lg flex items-center justify-center text-xl font-bold mb-2 shadow-sm pointer-events-none">
+              {app.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-200 text-center pointer-events-none leading-tight break-words line-clamp-2 w-full">
+            {app.name}
           </span>
-        )}
-      </button>
+          {app.shortcut && (
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded pointer-events-none">
+              {app.shortcut}
+            </span>
+          )}
+        </button>
+      </div>
 
       {renderContextMenu()}
     </>
