@@ -62,8 +62,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             application::commands::launch_app,
-            application::commands::extract_icon,
             application::commands::extract_file_info,
+            application::commands::extract_icon,
+            application::commands::restart_as_admin,
             hide_window
         ])
         .setup(|app| {
@@ -88,7 +89,9 @@ pub fn run() {
                     }
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
+                            let is_visible = window.is_visible().unwrap_or(false);
+                            let is_focused = window.is_focused().unwrap_or(false);
+                            if is_visible && is_focused {
                                 trigger_hide_animation(&window);
                             } else {
                                 trigger_show_animation(&window);
@@ -106,7 +109,9 @@ pub fn run() {
                     {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
+                            let is_visible = window.is_visible().unwrap_or(false);
+                            let is_focused = window.is_focused().unwrap_or(false);
+                            if is_visible && is_focused {
                                 trigger_hide_animation(&window);
                             } else {
                                 trigger_show_animation(&window);

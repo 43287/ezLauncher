@@ -1,16 +1,30 @@
 import React from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 
 export const CustomTitlebar: React.FC = () => {
   const appWindow = getCurrentWindow();
+
+  const handleAdminRestart = async () => {
+    try {
+      await invoke("restart_as_admin");
+    } catch (e) {
+      console.error("Failed to restart as admin:", e);
+      alert(e); // Provide feedback to the user
+    }
+  };
 
   return (
     <div
       data-tauri-drag-region
       className="h-8 flex justify-between items-center bg-gray-100 dark:bg-gray-800 select-none px-2"
     >
-      <div data-tauri-drag-region className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-2 pointer-events-none">
-        ezLaunch
+      <div 
+        className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-2 cursor-pointer hover:text-blue-500 transition-colors"
+        onDoubleClick={handleAdminRestart}
+        title="双击以管理员权限重启"
+      >
+        ezLauncher
       </div>
       <div className="flex space-x-2">
         <button
