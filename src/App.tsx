@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { AppGrid } from "./components/AppGrid";
 import { LaunchItem } from "./types";
 import { CustomTitlebar } from "./components/CustomTitlebar";
@@ -19,7 +19,7 @@ function App() {
   const { settings, updateSetting, isLoaded } = useSettings();
   const [hasInitialized, setHasInitialized] = useState(false);
 
-  const { apps, setApps, leftTabs, setLeftTabs, topTabs, setTopTabs, activeLeftTab, setActiveLeftTab, activeTopTab, setActiveTopTab } = useAppStore();
+  const { apps, setApps, leftTabs, setLeftTabs, topTabs, setTopTabs, activeLeftTab, setActiveLeftTab, activeTopTab, setActiveTopTab, addApp, removeApp, updateApp } = useAppStore();
   const { openMenu } = useContextMenuStore();
 
   const [isVisible, setIsVisible] = useState(false);
@@ -71,24 +71,11 @@ function App() {
   useGlobalDrag(apps, setApps, activeLeftTab, activeTopTab, setIsDraggingFile, setHoveredItemId);
 
   const handleAppAdd = (newApp: LaunchItem) => {
-    setApps((prev: LaunchItem[]) => {
-      const appWithIds = {
-        ...newApp,
-        categoryId: newApp.categoryId || activeLeftTab,
-        columnId: newApp.columnId || activeTopTab
-      };
-      if (appWithIds.type === 'app' && appWithIds.executablePath) {
-        const existingPaths = new Set(prev.filter(a => a.type === 'app' && a.executablePath).map(a => a.executablePath));
-        if (existingPaths.has(appWithIds.executablePath)) {
-          return prev;
-        }
-      }
-      return [...prev, appWithIds];
-    });
+    addApp(newApp);
   };
 
   const handleAppRemove = (id: string) => {
-    setApps((prev: LaunchItem[]) => prev.filter((app) => app.id !== id));
+    removeApp(id);
   };
 
   const { handleWheel } = useWheelNavigation(
@@ -101,18 +88,14 @@ function App() {
     setActiveLeftTab
   );
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (e.shiftKey) {
-      const currentIndex = topTabs.findIndex(t => t.id === activeTopTab);
-      setActiveTopTab(topTabs[(currentIndex + 1) % topTabs.length]?.id || activeTopTab);
-    }
-  };
+  const filteredApps = useMemo(() => {
+    return apps.filter(app => app.categoryId === activeLeftTab && app.columnId === activeTopTab);
+  }, [apps, activeLeftTab, activeTopTab]);
 
   return (
     <div 
       className="h-screen w-screen bg-transparent overflow-hidden"
       onWheel={handleWheel}
-      onClick={handleClick}
       onContextMenu={(e) => e.preventDefault()}
     >
       <div 
@@ -156,7 +139,7 @@ function App() {
               }}
             >
               <AppGrid 
-                apps={apps.filter(app => app.categoryId === activeLeftTab && app.columnId === activeTopTab)} 
+                apps={filteredApps} 
                 isDraggingFile={isDraggingFile}
                 hoveredItemId={hoveredItemId}
                 onAppRemove={handleAppRemove} 
@@ -167,7 +150,7 @@ function App() {
                   });
                 }}
                 onAppRename={(id, newName) => {
-                  setApps((prev: LaunchItem[]) => prev.map(app => app.id === id ? { ...app, name: newName } : app));
+                  updateApp(id, { name: newName });
                 }}
                 onEditProperties={(app) => {
                   setEditingApp(app);
@@ -187,7 +170,7 @@ function App() {
           app={editingApp}
           onClose={() => setEditingApp(null)}
           onSave={(updatedApp) => {
-            setApps((prev: LaunchItem[]) => prev.map(app => app.id === updatedApp.id ? updatedApp : app));
+            updateApp(updatedApp.id, updatedApp);
             setEditingApp(null);
           }}
         />

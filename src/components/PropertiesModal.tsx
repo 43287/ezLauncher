@@ -17,6 +17,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
   const [executablePath, setExecutablePath] = useState(app.executablePath || "");
   const [url, setUrl] = useState(app.url || "");
   const [iconBase64, setIconBase64] = useState(app.iconBase64 || "");
+  const [iconUrl, setIconUrl] = useState(app.iconUrl || "");
   
   // 附加参数 (mock properties for the future)
   const [args, setArgs] = useState("");
@@ -30,6 +31,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
       executablePath,
       url,
       iconBase64,
+      iconUrl,
       // args, runAsAdmin could be added to LaunchItem in the future
     });
     onClose();
@@ -163,8 +165,8 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
             {activeCategory === '图标' && (
               <div className="flex flex-col items-center space-y-4">
                 <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner">
-                  {iconBase64 ? (
-                    <img src={iconBase64} alt="Preview" className="w-16 h-16 object-contain" />
+                  {iconUrl || iconBase64 ? (
+                    <img src={iconUrl || iconBase64} alt="Preview" className="w-16 h-16 object-contain" />
                   ) : (
                     <span className="text-3xl text-gray-400 font-bold">
                       {name ? name.charAt(0).toUpperCase() : '?'}
@@ -179,9 +181,18 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                   <div className="flex flex-col space-y-2">
                     <input
                       type="text"
-                      value={iconBase64}
+                      value={iconUrl || iconBase64}
                       aria-label="图标 URL 或 Base64"
-                      onChange={(e) => setIconBase64(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.startsWith("data:")) {
+                          setIconBase64(val);
+                          setIconUrl("");
+                        } else {
+                          setIconUrl(val);
+                          setIconBase64("");
+                        }
+                      }}
                       placeholder="手动输入图片 URL 或 Base64"
                       className="w-full bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
                     />
@@ -196,7 +207,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                       </button>
                       <button 
                         className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded transition-colors"
-                        onClick={() => setIconBase64("")}
+                        onClick={() => { setIconBase64(""); setIconUrl(""); }}
                       >
                         清除
                       </button>

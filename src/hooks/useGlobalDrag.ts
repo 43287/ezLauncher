@@ -67,7 +67,8 @@ export function useGlobalDrag(
                 try {
                   await invoke("launch_app", { 
                     executablePath: targetApp.executablePath,
-                    args: paths
+                    args: paths,
+                    runAsAdmin: false
                   });
                   await invoke("hide_window");
                 } catch (error) {
@@ -82,7 +83,6 @@ export function useGlobalDrag(
             for (const path of paths) {
               try {
                 // 优先尝试作为可执行文件或快捷方式提取图标
-                let iconBase64: string | undefined = undefined;
                 let finalName = "Unknown";
                 
                 const fileNameMatch = path.match(/[^\\/]+$/);
@@ -90,26 +90,16 @@ export function useGlobalDrag(
                   finalName = fileNameMatch[0].replace(/\.[^/.]+$/, "");
                 }
 
-                if (path.toLowerCase().endsWith('.exe') || path.toLowerCase().endsWith('.lnk')) {
-                  try {
-                    iconBase64 = await invoke<string>("extract_icon", { executablePath: path });
-                  } catch (e) {
-                    console.warn("Failed to extract native icon, falling back:", e);
-                  }
-                }
-                
-                if (!iconBase64) {
-                  const info: any = await invoke("extract_file_info", { filePath: path });
-                  finalName = info.name || finalName;
-                  iconBase64 = info.iconBase64 || undefined;
-                }
+                const info: any = await invoke("extract_file_info", { filePath: path });
+                finalName = info.name || finalName;
+                let iconUrl = info.iconUrl || undefined;
 
                 const newApp: LaunchItem = {
                   id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
                   name: finalName,
                   type: 'app',
                   executablePath: path,
-                  iconBase64,
+                  iconUrl,
                   shortcut: null,
                   categoryId: activeTabsRef.current.left,
                   columnId: activeTabsRef.current.top

@@ -3,7 +3,7 @@ import { LaunchItem } from "../types";
 import { invoke } from "@tauri-apps/api/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ContextMenuItem } from "./ContextMenuItem";
+import { useContextMenuStore } from "../store/useContextMenuStore";
 
 interface ShortcutItemProps {
   app: LaunchItem;
@@ -20,8 +20,7 @@ interface ShortcutItemProps {
 export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = false, onRemove, onEditProperties, onRename }) => {
   const [isEditingSeparator, setIsEditingSeparator] = useState(false);
   const [separatorName, setSeparatorName] = useState(app.name);
-
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const { openMenu } = useContextMenuStore();
 
   const {
     attributes,
@@ -39,14 +38,15 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
     zIndex: isDragging ? 1 : 0,
   };
 
-  const handleLaunch = async () => {
+  const handleLaunch = async (e: React.MouseEvent) => {
     if (app.type === 'separator') return;
+    const runAsAdmin = e.shiftKey;
     try {
       if (app.type === 'link' && app.url) {
         // Handle link launching
-        await invoke("launch_app", { executablePath: app.url });
+        await invoke("launch_app", { executablePath: app.url, runAsAdmin });
       } else if (app.executablePath) {
-        await invoke("launch_app", { executablePath: app.executablePath });
+        await invoke("launch_app", { executablePath: app.executablePath, runAsAdmin });
       }
       // 启动后可以隐藏窗口
       await invoke("hide_window");
@@ -58,13 +58,27 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const x = Math.min(e.clientX, window.innerWidth - 145);
-    const y = Math.min(e.clientY, window.innerHeight - 180);
-    setContextMenu({ x, y });
-  };
+    
+    const menuItems = [];
+    if (app.type !== 'separator') {
+      menuItems.push({
+        label: "编辑属性",
+        onClick: (e: React.MouseEvent) => {
+          e.stopPropagation();
+          onEditProperties?.(app);
+        }
+      });
+      menuItems.push({ isSeparator: true, label: "" });
+    }
+    menuItems.push({
+      label: "删除",
+      onClick: (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onRemove?.(app.id);
+      }
+    });
 
-  const closeContextMenu = () => {
-    setContextMenu(null);
+    openMenu(menuItems, e.clientX, e.clientY);
   };
 
   const handleSeparatorDoubleClick = (e: React.MouseEvent) => {
@@ -85,53 +99,6 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
   const handleSeparatorBlur = () => {
     onRename?.(app.id, separatorName);
     setIsEditingSeparator(false);
-  };
-
-  const renderContextMenu = () => {
-    if (!contextMenu) return null;
-    return (
-      <>
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={closeContextMenu}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            closeContextMenu();
-          }}
-        />
-        <div
-          className="fixed z-50 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 shadow-2xl rounded-xl py-1 w-24 overflow-visible"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {app.type !== 'separator' && (
-            <>
-              <ContextMenuItem 
-                label="编辑属性" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditProperties?.(app);
-                  closeContextMenu();
-                }}
-              />
-              <div className="h-px bg-gray-200/50 dark:bg-gray-700/50 my-1 mx-2" />
-            </>
-          )}
-
-          {/* Delete Button */}
-          <button
-              className="w-full text-left px-3 py-1.5 text-xs font-medium transition-colors hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 focus-visible:outline-none relative z-50"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove?.(app.id);
-                closeContextMenu();
-              }}
-            >
-              删除
-            </button>
-          </div>
-        </>
-    );
   };
 
   if (app.type === 'separator') {
@@ -168,7 +135,6 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
           </div>
           <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
         </div>
-        {renderContextMenu()}
       </>
     );
   }
@@ -191,9 +157,9 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
           }`}
           aria-label={`双击启动 ${app.name}`}
         >
-          {app.iconBase64 ? (
+          {app.iconUrl || app.iconBase64 ? (
             <img
-              src={app.iconBase64}
+              src={app.iconUrl || app.iconBase64}
               alt={`${app.name} icon`}
               className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
             />
@@ -212,8 +178,6 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
           )}
         </button>
       </div>
-
-      {renderContextMenu()}
     </>
   );
 };

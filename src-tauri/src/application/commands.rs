@@ -1,16 +1,10 @@
 use tauri::command;
 use crate::services::execution_service::{self, ExecutionService, ExtractedFileInfo};
-use crate::services::icon_service;
 
 #[command]
-pub fn launch_app(executable_path: String, args: Option<Vec<String>>) -> Result<(), String> {
+pub fn launch_app(executable_path: String, args: Option<Vec<String>>, run_as_admin: Option<bool>) -> Result<(), String> {
     let service = ExecutionService::default();
-    service.launch_app(&executable_path, args)
-}
-
-#[command]
-pub fn extract_icon(executable_path: String) -> Result<String, String> {
-    icon_service::extract_icon_base64(&executable_path)
+    service.launch_app(&executable_path, args, run_as_admin.unwrap_or(false))
 }
 
 #[command]

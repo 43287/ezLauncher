@@ -8,6 +8,7 @@ export interface LaunchItem {
   url?: string;             // for 'link'
   shortcut: string | null;
   iconBase64?: string;
+  iconUrl?: string;
   categoryId?: string;
   columnId?: string;
 }
