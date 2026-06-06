@@ -63,31 +63,20 @@ pub fn run() {
     if args.contains(&"--admin-proxy".to_string()) {
         tracing::info!("====> 启动 Admin Proxy 模式...");
         let mut expected_pid = None;
-        let mut expected_token = None;
         let mut expected_pipe = None;
         
         if let Some(pos) = args.iter().position(|a| a == "--admin-proxy") {
-            if args.len() > pos + 3 {
+            if args.len() > pos + 2 {
                 expected_pid = args[pos + 1].parse::<u32>().ok();
-                expected_token = Some(args[pos + 2].clone());
-                expected_pipe = Some(args[pos + 3].clone());
-            } else if args.len() > pos + 2 {
-                expected_pid = args[pos + 1].parse::<u32>().ok();
-                expected_token = Some(args[pos + 2].clone());
-            } else {
-                expected_pid = std::env::var("EZLAUNCH_PROXY_PID").ok().and_then(|s| s.parse::<u32>().ok());
-                expected_token = std::env::var("EZLAUNCH_PROXY_TOKEN").ok();
+                expected_pipe = Some(args[pos + 2].clone());
             }
         }
         
-        // 抹除环境变量，防止子进程继承
-        std::env::remove_var("EZLAUNCH_PROXY_PID");
-        std::env::remove_var("EZLAUNCH_PROXY_TOKEN");
-        
-        crate::services::proxy_server::run_proxy_server(expected_pid, expected_token, expected_pipe);
+        crate::services::proxy_server::run_proxy_client(expected_pid, expected_pipe);
         return;
     }
 
+    crate::services::proxy_server::init_main_listener();
     let mut builder = tauri::Builder::default();
 
     #[cfg(desktop)]
@@ -163,28 +152,16 @@ pub fn run() {
         .on_window_event(|_window, event| {
             // 当主窗口被销毁或应用退出时，清理代理进程
             if let tauri::WindowEvent::Destroyed = event {
-                use interprocess::local_socket::prelude::*;
-                use interprocess::local_socket::ToNsName;
-                use std::io::Write;
-                
-                let auth = crate::services::proxy_server::get_or_init_auth();
-                let name = match auth.pipe_name.clone().to_ns_name::<interprocess::local_socket::GenericNamespaced>() {
-                    Ok(n) => n,
-                    Err(_) => return,
-                };
-                
-                if let Ok(mut stream) = LocalSocketStream::connect(name) {
-                    let token = auth.reveal();
-                    
+                let mut guard = crate::services::proxy_server::PROXY_CONNECTION.lock().unwrap();
+                if let Some(stream) = guard.as_mut() {
                     let cmd = crate::services::proxy_server::ProxyCommand {
                         path: "".to_string(),
                         args: None,
                         action: Some("shutdown".to_string()),
-                        pid: Some(auth.pid),
-                        token: Some(token),
                     };
-                    if let Ok(payload) = serde_json::to_vec(&cmd) {
-                        let _ = stream.write_all(&payload);
+                    if let Ok(mut payload) = serde_json::to_vec(&cmd) {
+                        payload.push(b'\n');
+                        let _ = std::io::Write::write_all(stream, &payload);
                     }
                 }
             }

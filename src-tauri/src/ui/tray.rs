@@ -16,23 +16,16 @@ pub fn setup_tray(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 {
                     // 尝试向 Proxy 发送退出指令
-                    use interprocess::local_socket::{prelude::*, GenericNamespaced, ToNsName};
-                    use std::io::Write;
-                    let auth = crate::services::proxy_server::get_or_init_auth();
-                    if let Ok(name) = auth.pipe_name.clone().to_ns_name::<GenericNamespaced>() {
-                        if let Ok(mut stream) = LocalSocketStream::connect(name) {
-                            let token = auth.reveal();
-                            
-                            let cmd = crate::services::proxy_server::ProxyCommand {
-                                path: "".to_string(),
-                                args: None,
-                                action: Some("shutdown".to_string()),
-                                pid: Some(auth.pid),
-                                token: Some(token),
-                            };
-                            if let Ok(payload) = serde_json::to_vec(&cmd) {
-                                let _ = stream.write_all(&payload);
-                            }
+                    let mut guard = crate::services::proxy_server::PROXY_CONNECTION.lock().unwrap();
+                    if let Some(stream) = guard.as_mut() {
+                        let cmd = crate::services::proxy_server::ProxyCommand {
+                            path: "".to_string(),
+                            args: None,
+                            action: Some("shutdown".to_string()),
+                        };
+                        if let Ok(mut payload) = serde_json::to_vec(&cmd) {
+                            payload.push(b'\n');
+                            let _ = std::io::Write::write_all(stream, &payload);
                         }
                     }
                 }

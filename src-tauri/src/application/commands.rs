@@ -154,14 +154,14 @@ pub fn restart_as_admin() -> Result<(), AppError> {
         let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
         let exe_str = exe_path.to_str().ok_or("Failed to convert exe_path to string")?;
         
-        let auth = crate::services::proxy_server::get_or_init_auth();
-        let token = auth.reveal();
+        let pipe_name = crate::services::proxy_server::MAIN_PIPE_NAME.clone();
+        let pid = std::process::id();
         
-        tracing::info!("====> Proxy Token, PID: {} (token hidden)", auth.pid);
+        tracing::info!("====> Requesting Admin Proxy");
         
         let verb = U16CString::from_str("runas").unwrap();
         let file = U16CString::from_str(exe_str).unwrap();
-        let args_str = format!("--admin-proxy {} {} {}", auth.pid, token, auth.pipe_name);
+        let args_str = format!("--admin-proxy {} {}", pid, pipe_name);
         let args_u16 = U16CString::from_str(&args_str).unwrap();
 
         unsafe {
