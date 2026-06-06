@@ -40,7 +40,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
 
   const handleLaunch = async (e: React.MouseEvent) => {
     if (app.type === 'separator') return;
-    const runAsAdmin = e.shiftKey;
+    const runAsAdmin = e.shiftKey || app.runAsAdmin;
     try {
       // 启动前先隐藏窗口，提升响应速度体验
       await invoke("hide_window");
@@ -48,7 +48,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
         // Handle link launching
         await invoke("launch_app", { executablePath: app.url, runAsAdmin });
       } else if (app.executablePath) {
-        await invoke("launch_app", { executablePath: app.executablePath, runAsAdmin });
+        await invoke("launch_app", { executablePath: app.executablePath, args: app.args, runAsAdmin });
       }
     } catch (error) {
       console.error("Failed to launch app:", error);
@@ -157,9 +157,9 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
           }`}
           aria-label={`双击启动 ${app.name}`}
         >
-          {app.iconUrl || app.iconBase64 ? (
+          {app.iconUrl ? (
             <img
-              src={app.iconUrl || app.iconBase64}
+              src={app.iconUrl}
               alt={`${app.name} icon`}
               className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
             />

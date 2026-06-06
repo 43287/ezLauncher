@@ -7,11 +7,28 @@ use windows::Win32::Foundation::{LocalFree, HLOCAL};
 #[cfg(target_os = "windows")]
 use windows::core::PCWSTR;
 
+pub trait CryptoServiceTrait: Send + Sync {
+    fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+    fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+}
+
 pub struct CryptoService;
 
+impl Default for CryptoService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CryptoService {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl CryptoServiceTrait for CryptoService {
     #[cfg(target_os = "windows")]
-    pub fn encrypt_data(data: &[u8]) -> Result<Vec<u8>, String> {
+    fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, String> {
         let mut data_blob = CRYPT_INTEGER_BLOB {
             cbData: data.len() as u32,
             pbData: data.as_ptr() as *mut _,
@@ -52,7 +69,7 @@ impl CryptoService {
     }
 
     #[cfg(target_os = "windows")]
-    pub fn decrypt_data(data: &[u8]) -> Result<Vec<u8>, String> {
+    fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, String> {
         let mut data_blob = CRYPT_INTEGER_BLOB {
             cbData: data.len() as u32,
             pbData: data.as_ptr() as *mut _,
@@ -92,12 +109,12 @@ impl CryptoService {
     }
 
     #[cfg(not(target_os = "windows"))]
-    pub fn encrypt_data(_data: &[u8]) -> Result<Vec<u8>, String> {
+    fn encrypt_data(&self, _data: &[u8]) -> Result<Vec<u8>, String> {
         Err("DPAPI encryption is only supported on Windows".to_string())
     }
 
     #[cfg(not(target_os = "windows"))]
-    pub fn decrypt_data(_data: &[u8]) -> Result<Vec<u8>, String> {
+    fn decrypt_data(&self, _data: &[u8]) -> Result<Vec<u8>, String> {
         Err("DPAPI decryption is only supported on Windows".to_string())
     }
 }

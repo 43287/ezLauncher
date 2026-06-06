@@ -7,23 +7,30 @@ fn icon_cache() -> &'static DashMap<String, Vec<u8>> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn get_icon_data(decoded_path: &str) -> Vec<u8> {
+pub fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, String> {
+    if decoded_path.starts_with(r"\\") {
+        let err_msg = format!("UNC paths are not allowed for icon extraction: {}", decoded_path);
+        tracing::warn!("{}", err_msg);
+        return Err(err_msg);
+    }
+
     let cache = icon_cache();
     
     if let Some(cached) = cache.get(decoded_path) {
-        return cached.clone();
+        return Ok(cached.clone());
     }
     
     if let Ok(data) = systemicons::get_icon(decoded_path, 32) {
         cache.insert(decoded_path.to_string(), data.clone());
-        data
+        Ok(data)
     } else {
-        tracing::warn!("Failed to extract icon for {}", decoded_path);
-        vec![]
+        let err_msg = format!("Failed to extract icon for {}", decoded_path);
+        tracing::warn!("{}", err_msg);
+        Err(err_msg)
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_icon_data(_decoded_path: &str) -> Vec<u8> {
-    vec![]
+pub fn get_icon_data(_decoded_path: &str) -> Result<Vec<u8>, String> {
+    Err("Not supported on this OS".to_string())
 }

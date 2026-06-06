@@ -18,6 +18,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useAppStore, Tab } from "../../store/useAppStore";
 import { useContextMenuStore } from "../../store/useContextMenuStore";
+import { useModalStore } from "../../store/useModalStore";
 
 interface SortableTabProps {
   tab: Tab;
@@ -106,13 +107,10 @@ function SortableTab({
   );
 }
 
-interface SidebarProps {
-  onOpenSettings: () => void;
-}
-
-export function Sidebar({ onOpenSettings }: SidebarProps) {
+export function Sidebar() {
   const { leftTabs, setLeftTabs, activeLeftTab, setActiveLeftTab, apps } = useAppStore();
   const { openMenu } = useContextMenuStore();
+  const { openSettings } = useModalStore();
   
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -242,7 +240,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
       
       <div className="mt-auto mb-2 w-10 h-10 flex items-center justify-center" data-tauri-drag-region>
         <button
-          onClick={onOpenSettings}
+          onClick={openSettings}
           className="group w-full h-full flex items-center justify-center rounded-xl text-gray-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-gray-100 transition-all apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 active:scale-95"
           title="设置"
           aria-label="设置"

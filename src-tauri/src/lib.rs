@@ -9,7 +9,7 @@ pub mod application;
 pub mod ui;
 
 pub fn trigger_hide_animation(window: &tauri::WebviewWindow) {
-    let _ = window.emit("force_hide_animation", ());
+    let _ = window.emit(crate::application::events::FORCE_HIDE_ANIMATION, ());
     let win_clone = window.clone();
     std::thread::spawn(move || {
         // 等待前端 300ms 的 CSS 过渡动画完成，稍微加一点冗余时间避免闪烁
@@ -21,7 +21,7 @@ pub fn trigger_hide_animation(window: &tauri::WebviewWindow) {
 pub fn trigger_show_animation(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.set_focus(); // 确保强制夺取焦点
-    let _ = window.emit("force_show_animation", ());
+    let _ = window.emit(crate::application::events::FORCE_SHOW_ANIMATION, ());
 }
 
 #[tauri::command]
@@ -64,9 +64,14 @@ pub fn run() {
         tracing::info!("====> 启动 Admin Proxy 模式...");
         let mut expected_pid = None;
         let mut expected_token = None;
+        let mut expected_pipe = None;
         
         if let Some(pos) = args.iter().position(|a| a == "--admin-proxy") {
-            if args.len() > pos + 2 {
+            if args.len() > pos + 3 {
+                expected_pid = args[pos + 1].parse::<u32>().ok();
+                expected_token = Some(args[pos + 2].clone());
+                expected_pipe = Some(args[pos + 3].clone());
+            } else if args.len() > pos + 2 {
                 expected_pid = args[pos + 1].parse::<u32>().ok();
                 expected_token = Some(args[pos + 2].clone());
             } else {
@@ -79,7 +84,7 @@ pub fn run() {
         std::env::remove_var("EZLAUNCH_PROXY_PID");
         std::env::remove_var("EZLAUNCH_PROXY_TOKEN");
         
-        crate::services::proxy_server::run_proxy_server(expected_pid, expected_token);
+        crate::services::proxy_server::run_proxy_server(expected_pid, expected_token, expected_pipe);
         return;
     }
 
@@ -109,7 +114,8 @@ pub fn run() {
     }
 
     builder
-        .manage(crate::services::execution_service::ExecutionService::new())
+        .manage(std::sync::Arc::new(crate::services::execution_service::ExecutionService::new()) as std::sync::Arc<dyn crate::services::execution_service::ExecutionServiceTrait>)
+        .manage(std::sync::Arc::new(crate::services::crypto_service::CryptoService::new()) as std::sync::Arc<dyn crate::services::crypto_service::CryptoServiceTrait>)
         .register_uri_scheme_protocol("ezicon", |_app, request| {
             let uri_str = request.uri().to_string();
             tracing::info!("ezicon request: {}", uri_str);
@@ -117,13 +123,23 @@ pub fn run() {
             let decoded_path = percent_encoding::percent_decode_str(path_str).decode_utf8_lossy().to_string();
             tracing::info!("ezicon decoded path: {}", decoded_path);
             
-            let icon_data = crate::services::icon_service::get_icon_data(&decoded_path);
-
-            tauri::http::Response::builder()
-                .header("Access-Control-Allow-Origin", "*")
-                .header("Content-Type", "image/png")
-                .body(icon_data)
-                .unwrap()
+            match crate::services::icon_service::get_icon_data(&decoded_path) {
+                Ok(icon_data) => {
+                    tauri::http::Response::builder()
+                        .header("Access-Control-Allow-Origin", "*")
+                        .header("Content-Type", "image/png")
+                        .body(icon_data)
+                        .unwrap()
+                }
+                Err(e) => {
+                    tracing::error!("Failed to get icon data: {}", e);
+                    tauri::http::Response::builder()
+                        .status(400)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(e.into_bytes())
+                        .unwrap()
+                }
+            }
         })
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -151,13 +167,13 @@ pub fn run() {
                 use interprocess::local_socket::ToNsName;
                 use std::io::Write;
                 
-                let name = match crate::services::proxy_server::PROXY_PIPE_NAME.to_ns_name::<interprocess::local_socket::GenericNamespaced>() {
+                let auth = crate::services::proxy_server::get_or_init_auth();
+                let name = match auth.pipe_name.clone().to_ns_name::<interprocess::local_socket::GenericNamespaced>() {
                     Ok(n) => n,
                     Err(_) => return,
                 };
                 
                 if let Ok(mut stream) = LocalSocketStream::connect(name) {
-                    let auth = crate::services::proxy_server::get_or_init_auth();
                     let token = auth.reveal();
                     
                     let cmd = crate::services::proxy_server::ProxyCommand {

@@ -1,8 +1,9 @@
-use tauri::{command, AppHandle};
-use crate::services::execution_service::{self, ExecutionService, ExtractedFileInfo};
-use crate::services::crypto_service::CryptoService;
+use tauri::{command, AppHandle, State};
+use crate::services::execution_service::{ExecutionServiceTrait, ExtractedFileInfo};
+use crate::services::crypto_service::CryptoServiceTrait;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::sync::Arc;
 use super::error::AppError;
 
 #[command]
@@ -45,18 +46,27 @@ pub fn migrate_store_data(to_portable: bool, app_handle: AppHandle) -> Result<()
 }
 
 #[command]
-pub async fn launch_app(executable_path: String, args: Option<Vec<String>>, run_as_admin: Option<bool>) -> Result<(), AppError> {
+pub async fn launch_app(
+    executable_path: String, 
+    args: Option<Vec<String>>, 
+    run_as_admin: Option<bool>,
+    execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>
+) -> Result<(), AppError> {
+    let service = execution_service.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let service = ExecutionService::new();
         service.launch_app(&executable_path, args, run_as_admin.unwrap_or(false))
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))?
-    .map_err(AppError::Execution)
+    .map_err(|e| AppError::Execution(e.to_string()))
 }
 
 #[command]
-pub fn load_settings(portable: bool, app_handle: AppHandle) -> Result<String, AppError> {
+pub fn load_settings(
+    portable: bool, 
+    app_handle: AppHandle,
+    crypto_service: State<'_, Arc<dyn CryptoServiceTrait>>
+) -> Result<String, AppError> {
     let path = get_store_path(portable, app_handle.clone())?;
     if !std::path::Path::new(&path).exists() {
         return Ok("{}".to_string());
@@ -67,7 +77,7 @@ pub fn load_settings(portable: bool, app_handle: AppHandle) -> Result<String, Ap
         return Ok("{}".to_string());
     }
 
-    match CryptoService::decrypt_data(&encrypted_data) {
+    match crypto_service.decrypt_data(&encrypted_data) {
         Ok(decrypted) => {
             String::from_utf8(decrypted).map_err(|e| AppError::Other(format!("Invalid UTF-8 in settings: {}", e)))
         }
@@ -76,7 +86,7 @@ pub fn load_settings(portable: bool, app_handle: AppHandle) -> Result<String, Ap
             let content = String::from_utf8(encrypted_data.clone()).unwrap_or_else(|_| "".to_string());
             // 校验是否为合法 JSON，若是则升级为密文
             if content.starts_with('{') && serde_json::from_str::<serde_json::Value>(&content).is_ok() {
-                let _ = save_settings(portable, content.clone(), app_handle);
+                let _ = save_settings(portable, content.clone(), app_handle, crypto_service);
                 Ok(content)
             } else {
                 // 解密且解析失败，创建备份，防止被覆盖
@@ -90,9 +100,14 @@ pub fn load_settings(portable: bool, app_handle: AppHandle) -> Result<String, Ap
 }
 
 #[command]
-pub fn save_settings(portable: bool, settings_json: String, app_handle: AppHandle) -> Result<(), AppError> {
+pub fn save_settings(
+    portable: bool, 
+    settings_json: String, 
+    app_handle: AppHandle,
+    crypto_service: State<'_, Arc<dyn CryptoServiceTrait>>
+) -> Result<(), AppError> {
     let path = get_store_path(portable, app_handle)?;
-    let encrypted_data = CryptoService::encrypt_data(settings_json.as_bytes())
+    let encrypted_data = crypto_service.encrypt_data(settings_json.as_bytes())
         .map_err(AppError::Crypto)?;
     
     let mut tmp_path = std::path::PathBuf::from(&path);
@@ -114,8 +129,11 @@ pub fn save_settings(portable: bool, settings_json: String, app_handle: AppHandl
 }
 
 #[command]
-pub fn extract_file_info(file_path: String) -> Result<ExtractedFileInfo, AppError> {
-    execution_service::extract_file_info(file_path).map_err(AppError::Other)
+pub fn extract_file_info(
+    file_path: String,
+    execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>
+) -> Result<ExtractedFileInfo, AppError> {
+    execution_service.extract_file_info(file_path).map_err(|e| AppError::Other(e.to_string()))
 }
 
 #[command]
@@ -127,32 +145,44 @@ pub fn restart_as_admin() -> Result<(), AppError> {
 
     #[cfg(all(not(debug_assertions), target_os = "windows"))]
     {
-        use std::process::Command;
-        use std::os::windows::process::CommandExt;
+        use windows::Win32::UI::Shell::{ShellExecuteW, SE_ERR_ACCESSDENIED};
+        use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+        use windows::core::PCWSTR;
+        use widestring::U16CString;
+        use std::ptr;
         
         let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
+        let exe_str = exe_path.to_str().ok_or("Failed to convert exe_path to string")?;
         
         let auth = crate::services::proxy_server::get_or_init_auth();
         let token = auth.reveal();
         
         tracing::info!("====> Proxy Token, PID: {} (token hidden)", auth.pid);
         
-        let mut cmd = Command::new("powershell");
-        cmd.arg("-NoProfile")
-           .arg("-WindowStyle")
-           .arg("Hidden")
-           .arg("-Command")
-           .arg("Start-Process -FilePath $env:EZLAUNCH_EXE_PATH -ArgumentList '--admin-proxy' -WindowStyle Hidden -Verb RunAs")
-           .env("EZLAUNCH_EXE_PATH", exe_path.display().to_string())
-           .env("EZLAUNCH_PROXY_PID", auth.pid.to_string())
-           .env("EZLAUNCH_PROXY_TOKEN", token);
-           
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        let verb = U16CString::from_str("runas").unwrap();
+        let file = U16CString::from_str(exe_str).unwrap();
+        let args_str = format!("--admin-proxy {} {} {}", auth.pid, token, auth.pipe_name);
+        let args_u16 = U16CString::from_str(&args_str).unwrap();
 
-        cmd.spawn().map_err(|e| e.to_string())?;
-        // 不再退出主进程
-        // std::process::exit(0);
+        unsafe {
+            let result = ShellExecuteW(
+                None,
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(file.as_ptr()),
+                PCWSTR(args_u16.as_ptr()),
+                None,
+                SW_HIDE,
+            );
+
+            let ret_code = result.0 as usize;
+            if ret_code <= 32 {
+                if ret_code == SE_ERR_ACCESSDENIED as usize {
+                    return Err(AppError::Other("User cancelled UAC prompt".to_string()));
+                }
+                return Err(AppError::Other(format!("ShellExecuteW failed with code {}", ret_code)));
+            }
+        }
+        
         Ok(())
     }
 

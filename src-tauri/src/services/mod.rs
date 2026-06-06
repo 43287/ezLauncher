@@ -1,3 +1,4 @@
+pub mod error;
 pub mod execution_service;
 pub mod hotkey_service;
 pub mod proxy_server;

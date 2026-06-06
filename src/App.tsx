@@ -2,14 +2,14 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { AppGrid } from "./components/AppGrid";
 import { LaunchItem, Tab } from "./types";
 import { CustomTitlebar } from "./components/CustomTitlebar";
-import { SettingsWindow } from "./components/SettingsWindow";
-import { PropertiesModal } from "./components/PropertiesModal";
 import { useSettings } from "./hooks/useSettings";
 import { useAppStore } from "./store/useAppStore";
 import { useContextMenuStore } from "./store/useContextMenuStore";
+import { useModalStore } from "./store/useModalStore";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
 import { GlobalContextMenu } from "./components/layout/GlobalContextMenu";
+import { AppModals } from "./components/AppModals";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useGlobalDrag } from "./hooks/useGlobalDrag";
 import { useWheelNavigation } from "./hooks/useWheelNavigation";
@@ -21,6 +21,7 @@ function App() {
 
   const { apps, setApps, leftTabs, setLeftTabs, topTabs, setTopTabs, activeLeftTab, setActiveLeftTab, activeTopTab, setActiveTopTab, addApp, removeApp, updateApp } = useAppStore();
   const { openMenu } = useContextMenuStore();
+  const { openAddApp, openEditApp } = useModalStore();
 
   const [isVisible, setIsVisible] = useState(false);
 
@@ -55,11 +56,6 @@ function App() {
   useEffect(() => {
     activeTabsRef.current = { left: activeLeftTab, top: activeTopTab };
   }, [activeLeftTab, activeTopTab]);
-
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [editingApp, setEditingApp] = useState<LaunchItem | null>(null);
-  const [isAddingApp, setIsAddingApp] = useState(false);
-  const [addingAppType, setAddingAppType] = useState<LaunchItem['type']>('app');
 
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -125,11 +121,11 @@ function App() {
                   {
                     label: "添加",
                     children: [
-                      { label: "可执行程序", onClick: () => { setAddingAppType('app'); setIsAddingApp(true); } },
-                      { label: "网页链接", onClick: () => { setAddingAppType('link'); setIsAddingApp(true); } },
-                      { label: "系统程序", onClick: () => { setAddingAppType('app'); setIsAddingApp(true); } },
-                      { label: "脚本", onClick: () => { setAddingAppType('app'); setIsAddingApp(true); } },
-                      { label: "pwsh/cmd命令", onClick: () => { setAddingAppType('app'); setIsAddingApp(true); } }
+                      { label: "可执行程序", onClick: () => openAddApp('app') },
+                      { label: "网页链接", onClick: () => openAddApp('link') },
+                      { label: "系统程序", onClick: () => openAddApp('app') },
+                      { label: "脚本", onClick: () => openAddApp('app') },
+                      { label: "pwsh/cmd命令", onClick: () => openAddApp('app') }
                     ]
                   },
                   {
@@ -156,43 +152,16 @@ function App() {
                 onAppRename={(id, newName) => {
                   updateApp(id, { name: newName });
                 }}
-                onEditProperties={(app) => {
-                  setEditingApp(app);
-                }}
+                onEditProperties={openEditApp}
               />
             </div>
           </main>
           
-          <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
+          <Sidebar />
         </div>
       </div>
 
-      {isSettingsOpen && (
-        <SettingsWindow onClose={() => setIsSettingsOpen(false)} />
-      )}
-
-      {editingApp && (
-        <PropertiesModal
-          app={editingApp}
-          onClose={() => setEditingApp(null)}
-          onSave={(updatedApp) => {
-            updateApp(updatedApp.id, updatedApp);
-            setEditingApp(null);
-          }}
-        />
-      )}
-
-      {isAddingApp && (
-        <PropertiesModal
-          app={{ id: Date.now().toString(), name: "新建快捷方式", type: addingAppType, shortcut: null }}
-          onClose={() => setIsAddingApp(false)}
-          onSave={(newApp) => {
-            handleAppAdd(newApp);
-            setIsAddingApp(false);
-          }}
-        />
-      )}
-
+      <AppModals />
       <GlobalContextMenu />
     </div>
   );

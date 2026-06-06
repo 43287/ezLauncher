@@ -94,12 +94,11 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
   const [shortcut, setShortcut] = useState(app.shortcut || "");
   const [executablePath, setExecutablePath] = useState(app.executablePath || "");
   const [url, setUrl] = useState(app.url || "");
-  const [iconBase64, setIconBase64] = useState(app.iconBase64 || "");
   const [iconUrl, setIconUrl] = useState(app.iconUrl || "");
   
-  // 附加参数 (mock properties for the future)
-  const [args, setArgs] = useState("");
-  const [runAsAdmin, setRunAsAdmin] = useState(false);
+  // 附加参数
+  const [args, setArgs] = useState(app.args || "");
+  const [runAsAdmin, setRunAsAdmin] = useState(app.runAsAdmin || false);
 
   const handleSave = () => {
     onSave({
@@ -108,9 +107,9 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
       shortcut: shortcut || null,
       executablePath,
       url,
-      iconBase64,
       iconUrl,
-      // args, runAsAdmin could be added to LaunchItem in the future
+      args,
+      runAsAdmin,
     });
     handleClose();
   };
@@ -231,8 +230,8 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
               <div className={activeCategory === '图标' ? 'col-start-1 row-start-1 flex flex-col h-full' : 'col-start-1 row-start-1 flex flex-col h-full invisible pointer-events-none'}>
                 <div className="flex flex-col items-center space-y-4">
                   <div className="w-20 h-20 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner">
-                    {iconUrl || iconBase64 ? (
-                      <img src={iconUrl || iconBase64} alt="Preview" className="w-16 h-16 object-contain" />
+                    {iconUrl ? (
+                      <img src={iconUrl} alt="Preview" className="w-16 h-16 object-contain" />
                     ) : (
                       <span className="text-3xl text-gray-400 font-bold">
                         {name ? name.charAt(0).toUpperCase() : '?'}
@@ -247,25 +246,19 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                     <div className="flex flex-col space-y-2">
                       <input
                         type="text"
-                        value={(iconUrl && iconUrl.startsWith('http://ezicon.localhost/')) ? decodeURIComponent(iconUrl.replace('http://ezicon.localhost/', '')) : (iconUrl || iconBase64)}
-                        aria-label="图标 URL 或 Base64"
+                        value={(iconUrl && iconUrl.startsWith('http://ezicon.localhost/')) ? decodeURIComponent(iconUrl.replace('http://ezicon.localhost/', '')) : iconUrl}
+                        aria-label="图标 URL"
                         onChange={(e) => {
                           const val = e.target.value;
-                          if (val.startsWith("data:")) {
-                            setIconBase64(val);
-                            setIconUrl("");
+                          // 如果用户输入了普通路径，且不是 http 或 ezicon 开头，尝试将其转换为 ezicon
+                          if (val && !val.startsWith("http") && !val.startsWith("ezicon:")) {
+                            const encodedPath = encodeURIComponent(val).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+                            setIconUrl(`http://ezicon.localhost/${encodedPath}`);
                           } else {
-                            // 如果用户输入了普通路径，且不是 http 或 ezicon 开头，尝试将其转换为 ezicon
-                            if (val && !val.startsWith("http") && !val.startsWith("ezicon:")) {
-                              const encodedPath = encodeURIComponent(val).replace(/['()]/g, escape).replace(/\*/g, '%2A');
-                              setIconUrl(`http://ezicon.localhost/${encodedPath}`);
-                            } else {
-                              setIconUrl(val);
-                            }
-                            setIconBase64("");
+                            setIconUrl(val);
                           }
                         }}
-                        placeholder="手动输入图片 URL、路径或 Base64"
+                        placeholder="手动输入图片 URL 或路径"
                         className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
                       />
                       <div className="flex space-x-2">
@@ -279,7 +272,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                         </button>
                         <button 
                           className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-500/10 hover:bg-red-500/20 rounded-md transition-colors apple-ease"
-                          onClick={() => { setIconBase64(""); setIconUrl(""); }}
+                          onClick={() => { setIconUrl(""); }}
                         >
                           清除
                         </button>

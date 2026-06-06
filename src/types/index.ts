@@ -7,8 +7,9 @@ export interface LaunchItem {
   executablePath?: string; // for 'app', 'script'
   url?: string;             // for 'link'
   shortcut: string | null;
-  iconBase64?: string;
   iconUrl?: string;
+  args?: string;
+  runAsAdmin?: boolean;
   categoryId?: string;
   columnId?: string;
 }
@@ -25,7 +26,7 @@ export interface SettingOption {
   value: string;
 }
 
-export type SettingValue = boolean | string | number | object | any[];
+export type SettingValue = boolean | string | number | Record<string, unknown> | unknown[];
 
 export interface SettingSchema {
   id: string;

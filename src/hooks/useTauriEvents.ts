@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { FORCE_HIDE_ANIMATION, FORCE_SHOW_ANIMATION } from "../constants/events";
 
 export function useTauriEvents(setIsVisible: (visible: boolean) => void) {
   useEffect(() => {
@@ -27,12 +28,12 @@ export function useTauriEvents(setIsVisible: (visible: boolean) => void) {
         }
 
         // 监听后端发来的动画触发事件
-        const unlistenShow = await listen("force_show_animation", () => {
+        const unlistenShow = await listen(FORCE_SHOW_ANIMATION, () => {
           setIsVisible(true);
         });
         if (isMounted) unlisteners.push(unlistenShow); else unlistenShow();
 
-        const unlistenHide = await listen("force_hide_animation", () => {
+        const unlistenHide = await listen(FORCE_HIDE_ANIMATION, () => {
           setIsVisible(false);
         });
         if (isMounted) unlisteners.push(unlistenHide); else unlistenHide();
