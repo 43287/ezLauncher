@@ -26,7 +26,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: data: http://ezicon.localhost ezicon:; style-src 'self' 'unsafe-inline';"
     }
   },
   "bundle": {

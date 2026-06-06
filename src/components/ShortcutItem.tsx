@@ -42,14 +42,14 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
     if (app.type === 'separator') return;
     const runAsAdmin = e.shiftKey;
     try {
+      // 启动前先隐藏窗口，提升响应速度体验
+      await invoke("hide_window");
       if (app.type === 'link' && app.url) {
         // Handle link launching
         await invoke("launch_app", { executablePath: app.url, runAsAdmin });
       } else if (app.executablePath) {
         await invoke("launch_app", { executablePath: app.executablePath, runAsAdmin });
       }
-      // 启动后可以隐藏窗口
-      await invoke("hide_window");
     } catch (error) {
       console.error("Failed to launch app:", error);
     }
@@ -112,8 +112,8 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
           data-app-id={app.id}
           onContextMenu={handleContextMenu}
           onDoubleClick={handleSeparatorDoubleClick}
-          className={`w-full flex items-center py-2 cursor-grab active:cursor-grabbing rounded-lg transition-all duration-300 ease-out h-[40px] shrink-0 ${
-            isHovered ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-400' : ''
+          className={`col-span-full flex items-center py-2 cursor-grab active:cursor-grabbing rounded-lg transition-all duration-300 apple-ease h-[40px] shrink-0 ${
+            isHovered ? 'bg-blue-50/50 dark:bg-blue-900/30 ring-1 ring-blue-400' : ''
           }`}
         >
           <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
@@ -141,7 +141,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
 
   return (
     <>
-      <div className="flex justify-center shrink-0 w-[calc(25%-0.375rem)] sm:w-[calc(20%-0.4rem)] md:w-[calc(16.666%-0.416rem)]">
+      <div className="flex justify-center w-full">
         <button
           ref={setNodeRef}
           style={style}
@@ -150,10 +150,10 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
           data-app-id={app.id}
           onDoubleClick={handleLaunch}
           onContextMenu={handleContextMenu}
-          className={`aspect-square w-full max-w-[90px] flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 cursor-grab active:cursor-grabbing ${
+          className={`aspect-square w-full max-w-[90px] flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-300 apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 cursor-grab active:cursor-grabbing active:scale-95 ${
             isHovered 
-              ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-400' // Lighter highlight for drag-to-item
-              : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+              ? 'bg-blue-50/50 dark:bg-blue-900/30 ring-1 ring-blue-400 shadow-soft' // Lighter highlight for drag-to-item
+              : 'hover:bg-black/5 dark:hover:bg-white/10'
           }`}
           aria-label={`双击启动 ${app.name}`}
         >

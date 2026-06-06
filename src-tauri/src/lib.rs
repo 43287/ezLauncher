@@ -2,8 +2,6 @@ use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use tauri::Emitter;
-use std::sync::{Mutex, OnceLock};
-use std::collections::HashMap;
 
 pub mod domain;
 pub mod services;
@@ -14,7 +12,8 @@ pub fn trigger_hide_animation(window: &tauri::WebviewWindow) {
     let _ = window.emit("force_hide_animation", ());
     let win_clone = window.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        // 等待前端 300ms 的 CSS 过渡动画完成，稍微加一点冗余时间避免闪烁
+        std::thread::sleep(std::time::Duration::from_millis(350));
         let _ = win_clone.hide();
     });
 }
@@ -23,11 +22,6 @@ pub fn trigger_show_animation(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.set_focus(); // 确保强制夺取焦点
     let _ = window.emit("force_show_animation", ());
-}
-
-fn icon_cache() -> &'static Mutex<HashMap<String, Vec<u8>>> {
-    static CACHE: OnceLock<Mutex<HashMap<String, Vec<u8>>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 #[tauri::command]
@@ -75,8 +69,15 @@ pub fn run() {
             if args.len() > pos + 2 {
                 expected_pid = args[pos + 1].parse::<u32>().ok();
                 expected_token = Some(args[pos + 2].clone());
+            } else {
+                expected_pid = std::env::var("EZLAUNCH_PROXY_PID").ok().and_then(|s| s.parse::<u32>().ok());
+                expected_token = std::env::var("EZLAUNCH_PROXY_TOKEN").ok();
             }
         }
+        
+        // 抹除环境变量，防止子进程继承
+        std::env::remove_var("EZLAUNCH_PROXY_PID");
+        std::env::remove_var("EZLAUNCH_PROXY_TOKEN");
         
         crate::services::proxy_server::run_proxy_server(expected_pid, expected_token);
         return;
@@ -116,23 +117,7 @@ pub fn run() {
             let decoded_path = percent_encoding::percent_decode_str(path_str).decode_utf8_lossy().to_string();
             tracing::info!("ezicon decoded path: {}", decoded_path);
             
-            let mut icon_data = vec![];
-            
-            #[cfg(target_os = "windows")]
-            {
-                let cache = icon_cache().lock().unwrap();
-                if let Some(cached) = cache.get(&decoded_path) {
-                    icon_data = cached.clone();
-                } else {
-                    drop(cache); // 释放锁以免阻塞其他请求
-                    if let Ok(data) = systemicons::get_icon(&decoded_path, 32) {
-                        icon_data = data.clone();
-                        icon_cache().lock().unwrap().insert(decoded_path.clone(), data);
-                    } else {
-                        tracing::warn!("Failed to extract icon for {}", decoded_path);
-                    }
-                }
-            }
+            let icon_data = crate::services::icon_service::get_icon_data(&decoded_path);
 
             tauri::http::Response::builder()
                 .header("Access-Control-Allow-Origin", "*")

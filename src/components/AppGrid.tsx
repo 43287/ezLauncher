@@ -17,6 +17,8 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 
+import { useSettings } from "../hooks/useSettings";
+
 interface AppGridProps {
   apps: LaunchItem[];
   isDraggingFile?: boolean;
@@ -31,6 +33,9 @@ interface AppGridProps {
  * 应用网格组件，支持拖拽添加应用
  */
 export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, hoveredItemId = null, onAppRemove, onAppReorder, onAppRename, onEditProperties }) => {
+  const { settings } = useSettings();
+  const columns = parseInt(String(settings.columns || '4'), 10) || 4;
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -56,7 +61,7 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, 
 
   return (
       <div
-        className={`h-full w-full rounded-2xl transition-all duration-300 ease-out flex-1 ${
+        className={`h-full w-full rounded-2xl transition-all duration-300 apple-ease flex-1 ${
           isDraggingFile
             ? hoveredItemId 
               ? "bg-transparent border-2 border-transparent" // Item hovered, no global highlight
@@ -65,6 +70,7 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, 
         } ${apps.length === 0 ? '' : 'p-2'}`}
         role="region"
         aria-label="应用快捷方式网格，支持拖拽文件添加"
+        aria-live="polite"
       >
         {apps.length === 0 ? (
         <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 space-y-4">
@@ -81,7 +87,10 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, 
             items={apps.map(app => app.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="flex flex-wrap gap-2 items-start content-start">
+            <div 
+              className="grid gap-2 items-start content-start" 
+              style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+            >
               {apps.map((app) => (
                 <ShortcutItem
                   key={app.id}

@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useRef, useCallback } from 'react';
 import { tauriApi } from '../api/tauri';
+import { SettingValue } from '../types';
 
 interface SettingsContextType {
-  settings: Record<string, any>;
-  updateSetting: (key: string, value: any) => Promise<void>;
+  settings: Record<string, SettingValue>;
+  updateSetting: (key: string, value: SettingValue) => Promise<void>;
   isLoaded: boolean;
   isPortable: boolean;
   setPortableMode: (portable: boolean) => Promise<void>;
@@ -18,9 +19,10 @@ const SettingsContext = createContext<SettingsContextType>({
 });
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<Record<string, any>>({});
+  const [settings, setSettings] = useState<Record<string, SettingValue>>({});
   const [isLoaded, setIsLoaded] = useState(false);
   const [isPortable, setIsPortable] = useState(true);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     async function initStore() {
@@ -50,17 +52,24 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const updateSetting = async (key: string, value: any) => {
+  const updateSetting = useCallback(async (key: string, value: SettingValue) => {
     setSettings((prev) => {
       const newSettings = { ...prev, [key]: value };
-      // Save in background
-      tauriApi.saveSettings(isPortable, JSON.stringify(newSettings))
-        .catch(err => {
-          console.error('Failed to save settings:', err);
-        });
+      
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      
+      saveTimeoutRef.current = setTimeout(() => {
+        tauriApi.saveSettings(isPortable, JSON.stringify(newSettings))
+          .catch(err => {
+            console.error('Failed to save settings:', err);
+          });
+      }, 500); // 500ms debounce
+      
       return newSettings;
     });
-  };
+  }, [isPortable]);
 
   const setPortableMode = async (portable: boolean) => {
     localStorage.setItem('portable_mode', portable.toString());

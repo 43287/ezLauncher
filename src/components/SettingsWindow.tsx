@@ -97,34 +97,39 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
             <input
               type="checkbox"
               className="sr-only peer"
-              checked={value}
+              checked={value as boolean}
               onChange={(e) => updateSetting(schema.id, e.target.checked)}
             />
-            <div className="w-10 h-5 bg-gray-300 dark:bg-gray-600 rounded-full peer peer-checked:bg-blue-500 peer-focus:ring-2 peer-focus:ring-blue-300 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+            <div className="w-9 h-5 bg-black/10 dark:bg-white/10 rounded-full peer peer-checked:bg-blue-500 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400 peer-focus-visible:ring-offset-2 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-black/5 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-[16px] shadow-inner"></div>
           </label>
         );
       case 'input':
         return (
           <input
             type="text"
-            className="w-20 bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-            value={value}
+            className="w-20 bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
+            value={value as string}
             onChange={(e) => updateSetting(schema.id, e.target.value)}
           />
         );
       case 'select':
         return (
-          <select
-            className="bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-            value={value}
-            onChange={(e) => updateSetting(schema.id, e.target.value)}
-          >
-            {schema.options?.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              className="appearance-none pr-6 bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors cursor-pointer"
+              value={value as string}
+              onChange={(e) => updateSetting(schema.id, e.target.value)}
+            >
+              {schema.options?.map((opt) => (
+                <option key={opt.value} value={opt.value} className="bg-white dark:bg-gray-800">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+          </div>
         );
       default:
         return null;
@@ -139,29 +144,44 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
         onWheel={(e) => e.stopPropagation()}
       >
         <div 
-          className={`bg-white/95 dark:bg-gray-900/95 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl shadow-2xl w-[500px] h-[432px] mx-8 flex flex-col overflow-hidden transition-all duration-200 transform ${isVisible && !isClosing ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
+          className={`bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-black/5 dark:border-white/10 shadow-soft-lg rounded-xl w-full max-w-[90%] sm:max-w-[400px] mx-4 sm:mx-8 flex flex-col overflow-hidden ${isVisible && !isClosing ? 'animate-fade-up-scale' : 'animate-fade-down-scale'}`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
-          <div className="flex justify-between items-center px-6 py-3 border-b border-gray-200/50 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-800/50">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">设置</h2>
-            <button
-              onClick={handleClose}
-              className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
-              aria-label="关闭设置"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          {/* Header - 横向 Tab + 占位 (无保存) */}
+          <div className="flex justify-between items-center px-4 py-2 bg-transparent">
+            <div className="flex gap-1 overflow-x-auto scrollbar-hidden">
+              {categories.map(category => (
+                <button
+                  key={category}
+                  onClick={() => setActiveCategory(category)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 whitespace-nowrap ${
+                    activeCategory === category 
+                      ? 'bg-black/5 dark:bg-white/10 text-gray-900 dark:text-gray-100' 
+                      : 'text-gray-500 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10'
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+            
+            <div className="flex items-center ml-2">
+              <button
+                onClick={handleClose}
+                className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 rounded-md"
+                aria-label="关闭设置"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
-          {/* Content (2 Columns) */}
           <div 
-            className="flex flex-1 overflow-hidden"
+            className="flex flex-col p-4 bg-transparent rounded-b-xl overflow-hidden" 
             onWheel={(e) => {
               e.stopPropagation();
-              // 在整个设置内容区支持滚轮切换分类，并且进行节流处理避免滚动过快
               if (!wheelTimeoutRef.current) {
                 const currentIndex = categories.findIndex(c => c === activeCategory);
                 if (e.deltaY > 0 && currentIndex < categories.length - 1) {
@@ -175,49 +195,34 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
               }
             }}
           >
-            {/* Left Sidebar (Categories) */}
-            <div 
-              className="w-1/5 border-r border-gray-200/50 dark:border-gray-800/50 bg-gray-50/30 dark:bg-gray-800/30 p-2 space-y-1 overflow-y-auto flex flex-col items-center"
-            >
-              {categories.map(category => (
-                <button
-                  key={category}
-                  onClick={() => setActiveCategory(category)}
-                  className={`w-full text-center px-2 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                    activeCategory === category 
-                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  }`}
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
-
-            {/* Right Content (Settings Items) */}
-            <div className="flex-1 p-4 space-y-6">
-              {SETTINGS_SCHEMA.filter(schema => schema.category === activeCategory).map((schema) => (
-                <div key={schema.id} className="flex justify-between items-center">
-                  <div className="flex items-center space-x-1">
-                    <div className="text-gray-900 dark:text-gray-100 font-medium text-sm whitespace-nowrap">{schema.label}</div>
-                    {schema.description && (
-                      <div 
-                        className="relative flex items-center"
-                        onMouseEnter={(e) => handleMouseEnter(e, schema.description!)}
-                        onMouseLeave={handleMouseLeave}
-                      >
-                        <div className="w-3.5 h-3.5 rounded-full border border-gray-400 text-gray-500 dark:border-gray-500 dark:text-gray-400 flex items-center justify-center text-[9px] font-bold cursor-help">
-                          ?
+            <div className="flex-1 overflow-y-auto scrollbar-hidden pr-1">
+              <div className="grid grid-cols-1 grid-rows-1">
+                {categories.map((category) => (
+                  <div key={category} className={activeCategory === category ? 'col-start-1 row-start-1 space-y-4' : 'col-start-1 row-start-1 space-y-4 invisible pointer-events-none'}>
+                    {SETTINGS_SCHEMA.filter(schema => schema.category === category).map((schema) => (
+                      <div key={schema.id} className="flex justify-between items-center bg-black/5 dark:bg-white/5 px-3 h-11 rounded-md">
+                        <div className="flex items-center space-x-1">
+                          <div className="text-gray-900 dark:text-gray-100 font-medium text-xs whitespace-nowrap">{schema.label}</div>
+                          {schema.description && (
+                            <div 
+                              className="relative flex items-center"
+                              onMouseEnter={(e) => handleMouseEnter(e, schema.description!)}
+                              onMouseLeave={handleMouseLeave}
+                            >
+                              <div className="w-3.5 h-3.5 rounded-full border border-gray-400 text-gray-500 dark:border-gray-500 dark:text-gray-400 flex items-center justify-center text-[9px] font-bold cursor-help ml-1">
+                                ?
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="ml-4 flex-shrink-0 flex items-center">
+                          {renderControl(schema)}
                         </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                  <div className="ml-4 flex-shrink-0">
-                    {renderControl(schema)}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>

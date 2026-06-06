@@ -126,7 +126,7 @@ export const ContextMenuItem: React.FC<ContextMenuItemProps> = ({
           e.stopPropagation();
           if (onClick) onClick(e);
         }}
-        className={`w-full px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 focus-visible:outline-none relative z-50 whitespace-nowrap ${className}`}
+        className={`w-full px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 focus-visible:outline-none relative z-50 whitespace-nowrap ${className}`}
       >
         {label}
       </button>
@@ -144,8 +144,8 @@ export const ContextMenuItem: React.FC<ContextMenuItemProps> = ({
         onMouseMove={handleButtonMouseMove}
         onMouseEnter={handleButtonMouseEnter}
         onMouseLeave={handleButtonMouseLeave}
-        className={`absolute top-0 h-full flex justify-between items-center px-3 text-xs font-medium transition-all duration-300 ease-out focus-visible:outline-none overflow-hidden whitespace-nowrap
-          ${showSubmenu ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}
+        className={`absolute top-0 h-full flex justify-between items-center px-3 text-xs font-medium transition-all duration-300 apple-ease focus-visible:outline-none overflow-hidden whitespace-nowrap
+          ${showSubmenu ? 'bg-black/5 dark:bg-white/10 text-gray-900 dark:text-gray-100 rounded-md' : 'text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10'}
           ${submenuDirection === 'right' ? 'left-0' : 'right-0'}
           ${isContracted ? 'w-[60%]' : 'w-full'}
           ${className}
@@ -162,7 +162,7 @@ export const ContextMenuItem: React.FC<ContextMenuItemProps> = ({
 
       {/* 子菜单层 */}
       <div 
-        className={`absolute -top-1.5 min-w-max w-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur-md rounded-xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 py-1.5 overflow-visible transition-all duration-300 ease-out z-[70]
+        className={`absolute -top-1.5 min-w-max w-auto bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-xl shadow-soft-lg border border-black/5 dark:border-white/10 py-1.5 overflow-visible transition-all duration-300 apple-ease z-[70]
           ${showSubmenu ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none'}
           ${submenuDirection === 'right' 
             ? `origin-left ${showSubmenu ? 'translate-x-0' : '-translate-x-2'} ${isContracted ? 'left-[60%]' : 'left-full'}`

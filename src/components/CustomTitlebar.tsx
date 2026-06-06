@@ -17,16 +17,16 @@ export const CustomTitlebar: React.FC = () => {
   return (
     <div
       data-tauri-drag-region
-      className="h-8 flex justify-between items-center bg-gray-100 dark:bg-gray-800 select-none px-2"
+      className="h-9 flex justify-between items-center bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-black/5 dark:border-white/10 select-none px-3"
     >
       <div 
-        className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-2 cursor-pointer hover:text-blue-500 transition-colors"
+        className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-1 cursor-pointer hover:text-blue-500 transition-colors"
         onDoubleClick={handleAdminRestart}
         title="双击以管理员权限重启"
       >
         ezLauncher
       </div>
-      <div className="flex space-x-2">
+      <div className="flex gap-1.5">
         <button
           onClick={() => appWindow.minimize().catch(console.error)}
           className="w-6 h-6 flex items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"

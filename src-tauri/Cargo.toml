@@ -33,8 +33,8 @@ uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
 sysinfo = "0.31"
 lazy_static = "1.5.0"
 rand = "0.8.5"
-fs2 = "0.4.3"
 thiserror = "2.0.18"
+dashmap = "6.2.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58.0", features = [

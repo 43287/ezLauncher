@@ -101,8 +101,8 @@ fn verify_parent_process(expected_pid: u32) -> bool {
         tracing::warn!("{}", msg);
         append_debug_log(&msg);
         return false;
-    } else {
-        let name = expected_process.unwrap().name().to_string_lossy();
+    } else if let Some(process) = expected_process {
+        let name = process.name().to_string_lossy();
         let msg = format!("====> [Debug] verify_parent_process: Found expected parent process (PID {}), name: {}", expected_pid, name);
         tracing::info!("{}", msg);
         append_debug_log(&msg);
@@ -144,6 +144,26 @@ pub fn run_proxy_server(expected_pid: Option<u32>, expected_token: Option<String
             append_debug_log(&msg);
             return;
         }
+
+        // 启动后台线程定期检测主进程存活状态，解决孤儿化问题
+        std::thread::spawn(move || {
+            use sysinfo::System;
+            let mut sys = System::new();
+            let sys_pid = sysinfo::Pid::from_u32(pid);
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                sys.refresh_processes_specifics(
+                    sysinfo::ProcessesToUpdate::Some(&[sys_pid]),
+                    sysinfo::ProcessRefreshKind::new()
+                );
+                if sys.process(sys_pid).is_none() {
+                    let msg = "====> [Watcher] Parent process died. Exiting proxy.";
+                    tracing::info!("{}", msg);
+                    append_debug_log(msg);
+                    std::process::exit(0);
+                }
+            }
+        });
     } else {
         let msg = "====> Proxy Server Startup Failed: Expected PID not provided.";
         tracing::error!("{}", msg);

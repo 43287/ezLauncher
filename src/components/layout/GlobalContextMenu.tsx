@@ -67,7 +67,7 @@ export const GlobalContextMenu: React.FC = () => {
   return (
     <div 
       ref={menuRef}
-      className="fixed z-[100] min-w-max w-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur-md rounded-xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 py-1.5"
+      className="fixed z-[100] min-w-max w-auto bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-xl shadow-soft-lg border border-black/5 dark:border-white/10 py-1.5 animate-menu-pop origin-top-left"
       style={{ 
         left: position.x, 
         top: position.y 

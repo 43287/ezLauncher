@@ -5,8 +5,17 @@
 @layer base {
   /* A11y basics */
   *:focus-visible {
-    outline: 2px solid theme('colors.blue.500');
+    outline: 2px solid theme('colors.blue.400');
     outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* Scrollbar hiding */
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 }
 

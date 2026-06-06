@@ -80,7 +80,7 @@ function SortableTab({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={saveTabName}
           onKeyDown={handleInputKeyDown}
-          className="w-10 h-10 text-center text-xs font-medium bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-xl outline-none text-gray-900 dark:text-gray-100"
+          className="w-10 h-10 text-center text-xs font-medium bg-black/5 dark:bg-white/10 border-2 border-blue-400 rounded-xl outline-none text-gray-900 dark:text-gray-100 transition-colors"
           title="重命名"
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
@@ -91,10 +91,10 @@ function SortableTab({
           aria-selected={isActive}
           onClick={() => setActiveLeftTab(tab.id)}
           onDoubleClick={(e) => handleTabDoubleClick(tab, e)}
-          className={`w-full h-full flex items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+          className={`w-full h-full flex items-center justify-center rounded-xl transition-all apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 active:scale-95 ${
             isActive 
-              ? 'bg-blue-500 text-white shadow-md' 
-              : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
+              ? 'bg-blue-500 text-white shadow-soft' 
+              : 'text-gray-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-gray-100'
           }`}
           title={tab.name}
           aria-label={tab.name}
@@ -196,14 +196,14 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
 
   return (
     <nav 
-      className="w-16 flex flex-col items-center py-4 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50"
+      className="w-14 flex flex-col items-center py-4 border-r border-black/5 dark:border-white/10 bg-white/40 dark:bg-gray-900/40 backdrop-blur-md"
       data-tauri-drag-region
       role="tablist"
       aria-orientation="vertical"
       aria-label="主要导航"
     >
       <div 
-        className="flex-1 space-y-4 w-full flex flex-col items-center overflow-y-auto" 
+        className="flex-1 w-full flex flex-col items-center overflow-y-auto gap-3" 
         data-tauri-drag-region
         onDoubleClick={() => {
           const newId = Date.now().toString();
@@ -243,11 +243,11 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
       <div className="mt-auto mb-2 w-10 h-10 flex items-center justify-center" data-tauri-drag-region>
         <button
           onClick={onOpenSettings}
-          className="group w-full h-full flex items-center justify-center rounded-xl text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="group w-full h-full flex items-center justify-center rounded-xl text-gray-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-gray-100 transition-all apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 active:scale-95"
           title="设置"
           aria-label="设置"
         >
-          <svg className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 transition-transform duration-300 apple-ease group-hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>

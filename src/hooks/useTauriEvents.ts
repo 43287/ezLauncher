@@ -14,11 +14,12 @@ export function useTauriEvents(setIsVisible: (visible: boolean) => void) {
         
         if (monitor) {
           const scaleFactor = monitor.scaleFactor;
-          const logicalWidth = 400; // 抽屉宽度
+          const monitorWidth = monitor.size.width / scaleFactor;
+          const logicalWidth = Math.min(400, monitorWidth); // 抽屉宽度响应式
           const logicalHeight = monitor.size.height / scaleFactor;
           
           // 吸附在屏幕右侧，占据全高
-          const xPos = monitor.size.width / scaleFactor - logicalWidth;
+          const xPos = monitorWidth - logicalWidth;
           const yPos = 0;
           
           await win.setSize(new LogicalSize(logicalWidth, logicalHeight));

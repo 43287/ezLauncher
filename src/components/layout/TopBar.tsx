@@ -61,7 +61,7 @@ export function TopBar() {
   };
 
   return (
-    <div className="flex px-4 pt-3 pb-2 space-x-2" data-tauri-drag-region role="tablist" aria-label="次级导航">
+    <div className="flex px-4 pt-3 pb-2 gap-2 bg-transparent" data-tauri-drag-region role="tablist" aria-label="次级导航">
       {topTabs.map((tab) => {
         const isActive = activeTopTab === tab.id;
         const isEditing = editingTabId === tab.id;
@@ -73,33 +73,40 @@ export function TopBar() {
             onContextMenu={(e) => handleTabContextMenu(e, tab)}
           >
             {isEditing ? (
-              <input
-                ref={editInputRef}
-                type="text"
-                value={editValue}
-                aria-label="重命名顶部标签"
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={saveTabName}
-                onKeyDown={handleInputKeyDown}
-                className="px-4 py-1.5 text-sm font-medium bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-full outline-none text-gray-900 dark:text-gray-100 text-center box-border"
-                onClick={(e) => e.stopPropagation()}
-                onDoubleClick={(e) => e.stopPropagation()}
-                style={{ width: `calc(32px + ${editValue.length}ch)` }}
-              />
+              <div className="flex h-8 items-center relative">
+                <input
+                  ref={editInputRef}
+                  type="text"
+                  value={editValue}
+                  aria-label="重命名顶部标签"
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={saveTabName}
+                  onKeyDown={handleInputKeyDown}
+                  className="px-4 h-full text-sm font-medium bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-full outline-none text-gray-900 dark:text-gray-100 text-center box-border absolute left-1/2 -translate-x-1/2 min-w-full z-10"
+                  onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  style={{ width: `calc(32px + ${editValue.length}ch)` }}
+                />
+                <div className="px-4 h-full text-sm font-medium invisible whitespace-nowrap">
+                  {tab.name}
+                </div>
+              </div>
             ) : (
-              <button
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setActiveTopTab(tab.id)}
-                onDoubleClick={(e) => handleTabDoubleClick(tab, e)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                  isActive
-                    ? 'bg-gray-800 text-white dark:bg-gray-100 dark:text-gray-900 shadow'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
-                }`}
-              >
-                {tab.name}
-              </button>
+              <div className="flex h-8 items-center">
+                <button
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveTopTab(tab.id)}
+                  onDoubleClick={(e) => handleTabDoubleClick(tab, e)}
+                  className={`px-4 h-full rounded-full text-sm font-medium transition-all apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 active:scale-95 ${
+                    isActive
+                      ? 'bg-black/80 text-white dark:bg-white/90 dark:text-gray-900 shadow-soft'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10'
+                  }`}
+                >
+                  {tab.name}
+                </button>
+              </div>
             )}
           </div>
         );

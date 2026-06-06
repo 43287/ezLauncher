@@ -22,7 +22,7 @@ export function useGlobalDrag(
         const unlisten = await win.onDragDropEvent(async (event) => {
           if (event.payload.type === 'enter' || event.payload.type === 'over') {
             setIsDraggingFile(true);
-            const pos = (event.payload as any).position;
+            const pos = (event.payload as { position?: { x: number; y: number } }).position;
             if (pos) {
               const clientX = pos.x / window.devicePixelRatio;
               const clientY = pos.y / window.devicePixelRatio;
@@ -55,8 +55,8 @@ export function useGlobalDrag(
               const targetApp = state.apps.find(a => a.id === hoveredId);
               if (targetApp && targetApp.type === 'app' && targetApp.executablePath) {
                 try {
-                  await tauriApi.launchApp(targetApp.executablePath, paths, false);
                   await tauriApi.hideWindow();
+                  await tauriApi.launchApp(targetApp.executablePath, paths, false);
                 } catch (error) {
                   console.error("Failed to launch app with args:", error);
                 }

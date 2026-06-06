@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { AppGrid } from "./components/AppGrid";
-import { LaunchItem } from "./types";
+import { LaunchItem, Tab } from "./types";
 import { CustomTitlebar } from "./components/CustomTitlebar";
 import { SettingsWindow } from "./components/SettingsWindow";
 import { PropertiesModal } from "./components/PropertiesModal";
@@ -26,33 +26,30 @@ function App() {
 
   useEffect(() => {
     if (isLoaded && !hasInitialized) {
-      if (settings.apps) setApps(settings.apps);
-      if (settings.leftTabs) setLeftTabs(settings.leftTabs);
-      if (settings.topTabs) setTopTabs(settings.topTabs);
+      if (settings.apps) setApps(settings.apps as LaunchItem[]);
+      if (settings.leftTabs) setLeftTabs(settings.leftTabs as Tab[]);
+      if (settings.topTabs) setTopTabs(settings.topTabs as Tab[]);
       setHasInitialized(true);
     }
   }, [isLoaded, hasInitialized, settings, setApps, setLeftTabs, setTopTabs]);
 
-  const prevAppsRef = useRef(apps);
-  const prevLeftTabsRef = useRef(leftTabs);
-  const prevTopTabsRef = useRef(topTabs);
-
   useEffect(() => {
     if (!hasInitialized) return;
     
-    if (prevAppsRef.current !== apps) {
-      updateSetting('apps', apps);
-      prevAppsRef.current = apps;
-    }
-    if (prevLeftTabsRef.current !== leftTabs) {
-      updateSetting('leftTabs', leftTabs);
-      prevLeftTabsRef.current = leftTabs;
-    }
-    if (prevTopTabsRef.current !== topTabs) {
-      updateSetting('topTabs', topTabs);
-      prevTopTabsRef.current = topTabs;
-    }
-  }, [apps, leftTabs, topTabs, hasInitialized, updateSetting]);
+    const unsubscribe = useAppStore.subscribe((state, prevState) => {
+      if (state.apps !== prevState.apps) {
+        updateSetting('apps', state.apps);
+      }
+      if (state.leftTabs !== prevState.leftTabs) {
+        updateSetting('leftTabs', state.leftTabs);
+      }
+      if (state.topTabs !== prevState.topTabs) {
+        updateSetting('topTabs', state.topTabs);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [hasInitialized, updateSetting]);
 
   const activeTabsRef = useRef({ left: activeLeftTab, top: activeTopTab });
   useEffect(() => {
@@ -88,9 +85,18 @@ function App() {
     setActiveLeftTab
   );
 
+  const appsByCat = useMemo(() => {
+    return apps.reduce((acc, app) => {
+      const catId = app.categoryId || '';
+      if (!acc[catId]) acc[catId] = [];
+      acc[catId].push(app);
+      return acc;
+    }, {} as Record<string, LaunchItem[]>);
+  }, [apps]);
+
   const filteredApps = useMemo(() => {
-    return apps.filter(app => app.categoryId === activeLeftTab && app.columnId === activeTopTab);
-  }, [apps, activeLeftTab, activeTopTab]);
+    return (appsByCat[activeLeftTab] || []).filter(app => app.columnId === activeTopTab);
+  }, [appsByCat, activeLeftTab, activeTopTab]);
 
   return (
     <div 
@@ -99,15 +105,13 @@ function App() {
       onContextMenu={(e) => e.preventDefault()}
     >
       <div 
-        className={`flex flex-col h-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-transform duration-300 ease-in-out ${
+        className={`flex flex-col h-full bg-white/90 dark:bg-gray-900/80 backdrop-blur-xl shadow-soft-lg transition-transform duration-300 ease-in-out ${
           isVisible ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
         <CustomTitlebar />
         <div className="flex flex-1 overflow-hidden" data-tauri-drag-region>
-          <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
-
-          <main className="flex-1 flex flex-col bg-white/50 dark:bg-gray-900/50" data-tauri-drag-region>
+          <main className="flex-1 flex flex-col bg-transparent" data-tauri-drag-region>
             <TopBar />
 
             <div 
@@ -158,6 +162,8 @@ function App() {
               />
             </div>
           </main>
+          
+          <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
         </div>
       </div>
 

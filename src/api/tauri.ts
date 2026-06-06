@@ -17,8 +17,8 @@ export const tauriApi = {
     return invoke<void>('hide_window');
   },
 
-  extractFileInfo: async (filePath: string): Promise<any> => {
-    return invoke<any>('extract_file_info', { filePath });
+  extractFileInfo: async (filePath: string): Promise<{ name?: string; iconUrl?: string }> => {
+    return invoke<{ name?: string; iconUrl?: string }>('extract_file_info', { filePath });
   },
 
   restartAsAdmin: async (): Promise<void> => {

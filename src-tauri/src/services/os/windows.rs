@@ -46,7 +46,7 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, run_
             tracing::warn!("====> Proxy 连接失败: {}，尝试启动 Proxy Server", e);
             
             // 获取启动锁，如果已经被其他线程获取，则阻塞等待其完成启动过程
-            let _guard = PROXY_STARTING_LOCK.lock().unwrap();
+            let _guard = PROXY_STARTING_LOCK.lock().map_err(|e| format!("Mutex lock failed: {}", e))?;
             
             // 拿到锁后再尝试连接一次，可能在等待锁的过程中，其他线程已经成功拉起了 Proxy
             if send_command().is_ok() {
@@ -54,7 +54,7 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, run_
             }
 
             let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
-            let exe_str = exe_path.to_str().unwrap();
+            let exe_str = exe_path.to_str().ok_or("Failed to convert exe_path to string")?;
             
             tracing::info!("====> 正在拉起代理进程，路径: {}", exe_str);
             
@@ -63,22 +63,17 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, run_
             
             let auth = crate::services::proxy_server::get_or_init_auth();
             let token = auth.reveal();
-            tracing::info!("====> 自动生成 Proxy Token, PID: {}, UUID (obfuscated in memory): {}", auth.pid, token);
+            tracing::info!("====> 自动生成 Proxy Token, PID: {} (token hidden)", auth.pid);
             
             let mut cmd = Command::new("powershell");
             cmd.arg("-NoProfile")
                .arg("-WindowStyle")
                .arg("Hidden")
                .arg("-Command")
-               .arg("Start-Process")
-               .arg("-FilePath")
-               .arg(format!("\"{}\"", exe_str))
-               .arg("-ArgumentList")
-               .arg(format!("\"--admin-proxy {} {}\"", auth.pid, token))
-               .arg("-WindowStyle")
-               .arg("Hidden")
-               .arg("-Verb")
-               .arg("RunAs");
+               .arg("Start-Process -FilePath $env:EZLAUNCH_EXE_PATH -ArgumentList '--admin-proxy' -WindowStyle Hidden -Verb RunAs")
+               .env("EZLAUNCH_EXE_PATH", exe_str)
+               .env("EZLAUNCH_PROXY_PID", auth.pid.to_string())
+               .env("EZLAUNCH_PROXY_TOKEN", token);
                
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             cmd.creation_flags(CREATE_NO_WINDOW);

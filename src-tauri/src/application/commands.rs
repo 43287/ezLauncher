@@ -3,39 +3,23 @@ use crate::services::execution_service::{self, ExecutionService, ExtractedFileIn
 use crate::services::crypto_service::CryptoService;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use fs2::FileExt;
 use super::error::AppError;
 
 #[command]
-#[allow(unused_variables)]
 pub fn get_store_path(portable: bool, app_handle: AppHandle) -> Result<String, AppError> {
-    #[cfg(debug_assertions)]
-    {
-        // 使用 CARGO_MANIFEST_DIR 获取编译时的 src-tauri 目录，然后退回上一级得到项目根目录
-        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.pop(); // 回退到项目根目录
-        path.push("output");
+    use tauri::Manager;
+    if portable {
+        let mut path = std::env::current_exe()?;
+        path.pop(); // remove executable name
         path.push("data");
         std::fs::create_dir_all(&path)?;
         path.push("settings.json");
         Ok(path.to_string_lossy().to_string())
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        use tauri::Manager;
-        if portable {
-            let mut path = std::env::current_exe()?;
-            path.pop(); // remove executable name
-            path.push("data");
-            std::fs::create_dir_all(&path)?;
-            path.push("settings.json");
-            Ok(path.to_string_lossy().to_string())
-        } else {
-            let mut path = app_handle.path().app_data_dir()?;
-            std::fs::create_dir_all(&path)?;
-            path.push("settings.json");
-            Ok(path.to_string_lossy().to_string())
-        }
+    } else {
+        let mut path = app_handle.path().app_data_dir()?;
+        std::fs::create_dir_all(&path)?;
+        path.push("settings.json");
+        Ok(path.to_string_lossy().to_string())
     }
 }
 
@@ -89,13 +73,17 @@ pub fn load_settings(portable: bool, app_handle: AppHandle) -> Result<String, Ap
         }
         Err(_) => {
             // 如果解密失败（可能是旧版本的明文），尝试作为明文读取
-            let content = String::from_utf8(encrypted_data.clone()).unwrap_or_else(|_| "{}".to_string());
-            // 顺便触发一次加密保存，升级为密文
-            if content.starts_with('{') {
+            let content = String::from_utf8(encrypted_data.clone()).unwrap_or_else(|_| "".to_string());
+            // 校验是否为合法 JSON，若是则升级为密文
+            if content.starts_with('{') && serde_json::from_str::<serde_json::Value>(&content).is_ok() {
                 let _ = save_settings(portable, content.clone(), app_handle);
                 Ok(content)
             } else {
-                Err(AppError::Crypto("Failed to decrypt settings.json and it's not a valid JSON.".to_string()))
+                // 解密且解析失败，创建备份，防止被覆盖
+                let mut bak_path = std::path::PathBuf::from(&path);
+                bak_path.set_extension("bak");
+                let _ = std::fs::copy(&path, &bak_path);
+                Err(AppError::Crypto("Failed to decrypt settings.json and it's not a valid JSON. Backup created.".to_string()))
             }
         }
     }
@@ -107,16 +95,20 @@ pub fn save_settings(portable: bool, settings_json: String, app_handle: AppHandl
     let encrypted_data = CryptoService::encrypt_data(settings_json.as_bytes())
         .map_err(AppError::Crypto)?;
     
+    let mut tmp_path = std::path::PathBuf::from(&path);
+    tmp_path.set_extension("tmp");
+
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(&path)?;
+        .open(&tmp_path)?;
         
-    // 加独占锁防止并发写导致文件损坏
-    file.lock_exclusive()?;
     file.write_all(&encrypted_data)?;
-    file.unlock()?;
+    file.sync_all()?;
+    
+    // 原子化重命名替换，防止崩溃导致文件损坏
+    std::fs::rename(&tmp_path, &path)?;
     
     Ok(())
 }
@@ -143,22 +135,17 @@ pub fn restart_as_admin() -> Result<(), AppError> {
         let auth = crate::services::proxy_server::get_or_init_auth();
         let token = auth.reveal();
         
-        tracing::info!("====> Proxy Token, PID: {}, UUID (obfuscated in memory): {}", auth.pid, token);
+        tracing::info!("====> Proxy Token, PID: {} (token hidden)", auth.pid);
         
         let mut cmd = Command::new("powershell");
         cmd.arg("-NoProfile")
            .arg("-WindowStyle")
            .arg("Hidden")
            .arg("-Command")
-           .arg("Start-Process")
-           .arg("-FilePath")
-           .arg(format!("\"{}\"", exe_path.display()))
-           .arg("-ArgumentList")
-           .arg(format!("\"--admin-proxy {} {}\"", auth.pid, token))
-           .arg("-WindowStyle")
-           .arg("Hidden")
-           .arg("-Verb")
-           .arg("RunAs");
+           .arg("Start-Process -FilePath $env:EZLAUNCH_EXE_PATH -ArgumentList '--admin-proxy' -WindowStyle Hidden -Verb RunAs")
+           .env("EZLAUNCH_EXE_PATH", exe_path.display().to_string())
+           .env("EZLAUNCH_PROXY_PID", auth.pid.to_string())
+           .env("EZLAUNCH_PROXY_TOKEN", token);
            
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);

@@ -25,6 +25,8 @@ export interface SettingOption {
   value: string;
 }
 
+export type SettingValue = boolean | string | number | object | any[];
+
 export interface SettingSchema {
   id: string;
   category: string;
@@ -32,5 +34,5 @@ export interface SettingSchema {
   description?: string;
   type: SettingType;
   options?: SettingOption[];
-  defaultValue: any;
+  defaultValue: SettingValue;
 }
