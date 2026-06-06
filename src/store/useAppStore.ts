@@ -12,6 +12,7 @@ interface AppState {
   topTabs: Tab[];
   activeLeftTab: string;
   activeTopTab: string;
+  isRecordingShortcut: boolean;
   
   // Actions
   setApps: (apps: LaunchItem[] | ((prev: LaunchItem[]) => LaunchItem[])) => void;
@@ -19,6 +20,7 @@ interface AppState {
   setTopTabs: (tabs: Tab[] | ((prev: Tab[]) => Tab[])) => void;
   setActiveLeftTab: (id: string) => void;
   setActiveTopTab: (id: string) => void;
+  setIsRecordingShortcut: (val: boolean) => void;
   
   addApp: (newApp: LaunchItem) => void;
   removeApp: (id: string) => void;
@@ -39,12 +41,14 @@ export const useAppStore = create<AppState>((set) => ({
   ],
   activeLeftTab: '2',
   activeTopTab: '1',
+  isRecordingShortcut: false,
 
   setApps: (apps) => set((state) => ({ apps: typeof apps === 'function' ? apps(state.apps) : apps })),
   setLeftTabs: (tabs) => set((state) => ({ leftTabs: typeof tabs === 'function' ? tabs(state.leftTabs) : tabs })),
   setTopTabs: (tabs) => set((state) => ({ topTabs: typeof tabs === 'function' ? tabs(state.topTabs) : tabs })),
   setActiveLeftTab: (id) => set({ activeLeftTab: id }),
   setActiveTopTab: (id) => set({ activeTopTab: id }),
+  setIsRecordingShortcut: (val) => set({ isRecordingShortcut: val }),
 
   addApp: (newApp) => set((state) => {
     const appWithIds = {

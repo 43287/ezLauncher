@@ -15,19 +15,7 @@ pub fn setup_tray(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             "quit" => {
                 #[cfg(target_os = "windows")]
                 {
-                    // 尝试向 Proxy 发送退出指令
-                    let mut guard = crate::services::proxy_server::PROXY_CONNECTION.lock().unwrap();
-                    if let Some(stream) = guard.as_mut() {
-                        let cmd = crate::services::proxy_server::ProxyCommand {
-                            path: "".to_string(),
-                            args: None,
-                            action: Some("shutdown".to_string()),
-                        };
-                        if let Ok(mut payload) = serde_json::to_vec(&cmd) {
-                            payload.push(b'\n');
-                            let _ = std::io::Write::write_all(stream, &payload);
-                        }
-                    }
+                    let _ = crate::services::proxy_server::shutdown_proxy();
                 }
                 app.exit(0);
             }

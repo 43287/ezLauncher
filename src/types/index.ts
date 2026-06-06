@@ -1,20 +1,23 @@
-export type LaunchItemType = 'app' | 'link' | 'script' | 'separator';
+export type LaunchItemType = 'app' | 'link' | 'script' | 'command' | 'separator';
 
 export interface LaunchItem {
   id: string;
   name: string;
   type: LaunchItemType;
-  executablePath?: string; // for 'app', 'script'
+  executablePath?: string; // for 'app', 'script', 'command' (as shell)
   url?: string;             // for 'link'
   shortcut: string | null;
   iconUrl?: string;
-  args?: string;
+  args?: string;            // for 'app', 'script' (as path), 'command' (as the actual command)
   runAsAdmin?: boolean;
+  cwd?: string;
+  envVariables?: string;
+  inTerminal?: boolean;     // for 'command'
   categoryId?: string;
   columnId?: string;
 }
 
-export type SettingType = 'switch' | 'input' | 'select';
+export type SettingType = 'switch' | 'input' | 'select' | 'shortcut' | 'readonly_shortcut';
 
 export type Tab = {
   id: string;
@@ -26,7 +29,9 @@ export interface SettingOption {
   value: string;
 }
 
-export type SettingValue = boolean | string | number | Record<string, unknown> | unknown[];
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+export type SettingValue = JsonValue;
 
 export interface SettingSchema {
   id: string;
@@ -35,5 +40,5 @@ export interface SettingSchema {
   description?: string;
   type: SettingType;
   options?: SettingOption[];
-  defaultValue: SettingValue;
+  defaultValue: unknown;
 }

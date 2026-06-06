@@ -1,11 +1,12 @@
-import { create } from 'zustand';
-import { LaunchItem, LaunchItemType } from '../types';
+import { create } from "zustand";
+import { LaunchItem, LaunchItemType } from "../types";
 
 interface ModalState {
   isSettingsOpen: boolean;
   editingApp: LaunchItem | null;
   isAddingApp: boolean;
   addingAppType: LaunchItemType;
+  isSystemAppOpen: boolean;
 
   openSettings: () => void;
   closeSettings: () => void;
@@ -15,13 +16,17 @@ interface ModalState {
 
   openAddApp: (type: LaunchItemType) => void;
   closeAddApp: () => void;
+
+  openSystemApp: () => void;
+  closeSystemApp: () => void;
 }
 
 export const useModalStore = create<ModalState>((set) => ({
   isSettingsOpen: false,
   editingApp: null,
   isAddingApp: false,
-  addingAppType: 'app',
+  addingAppType: "app",
+  isSystemAppOpen: false,
 
   openSettings: () => set({ isSettingsOpen: true }),
   closeSettings: () => set({ isSettingsOpen: false }),
@@ -31,4 +36,7 @@ export const useModalStore = create<ModalState>((set) => ({
 
   openAddApp: (type) => set({ isAddingApp: true, addingAppType: type }),
   closeAddApp: () => set({ isAddingApp: false }),
+
+  openSystemApp: () => set({ isSystemAppOpen: true }),
+  closeSystemApp: () => set({ isSystemAppOpen: false }),
 }));

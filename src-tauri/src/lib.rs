@@ -1,5 +1,5 @@
-use tauri::Manager;
-use tauri_plugin_global_shortcut::ShortcutState;
+
+
 
 use tauri::Emitter;
 
@@ -77,34 +77,14 @@ pub fn run() {
     }
 
     crate::services::proxy_server::init_main_listener();
-    let mut builder = tauri::Builder::default();
+    let builder = tauri::Builder::default();
 
-    #[cfg(desktop)]
-    {
-        builder = builder.plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _req, event| {
-                    if event.state == ShortcutState::Pressed {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let is_visible = window.is_visible().unwrap_or(false);
-                        let is_focused = window.is_focused().unwrap_or(false);
-                        
-                        // 只有当窗口既可见又拥有焦点时，才收起面板；否则（被遮挡或隐藏）均唤出并置顶
-                        if is_visible && is_focused {
-                            trigger_hide_animation(&window);
-                        } else {
-                            trigger_show_animation(&window);
-                        }
-                    }
-                }
-                })
-                .build(),
-        );
-    }
+
 
     builder
         .manage(std::sync::Arc::new(crate::services::execution_service::ExecutionService::new()) as std::sync::Arc<dyn crate::services::execution_service::ExecutionServiceTrait>)
         .manage(std::sync::Arc::new(crate::services::crypto_service::CryptoService::new()) as std::sync::Arc<dyn crate::services::crypto_service::CryptoServiceTrait>)
+        .manage(std::sync::Arc::new(crate::services::store_service::StoreService::new()) as std::sync::Arc<dyn crate::services::store_service::StoreServiceTrait>)
         .register_uri_scheme_protocol("ezicon", |_app, request| {
             let uri_str = request.uri().to_string();
             tracing::info!("ezicon request: {}", uri_str);
@@ -121,17 +101,18 @@ pub fn run() {
                         .unwrap()
                 }
                 Err(e) => {
-                    tracing::error!("Failed to get icon data: {}", e);
+                    tracing::error!("Failed to get icon data: {:?}", e);
                     tauri::http::Response::builder()
                         .status(400)
                         .header("Access-Control-Allow-Origin", "*")
-                        .body(e.into_bytes())
+                        .body(e.to_string().into_bytes())
                         .unwrap()
                 }
             }
         })
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![])))
         .invoke_handler(tauri::generate_handler![
             application::commands::launch_app,
             application::commands::extract_file_info,
@@ -140,6 +121,9 @@ pub fn run() {
             application::commands::migrate_store_data,
             application::commands::load_settings,
             application::commands::save_settings,
+            application::commands::get_system_apps,
+            application::commands::register_shortcut,
+            application::commands::unregister_all_shortcuts,
             hide_window
         ])
         .setup(|app| {
@@ -152,18 +136,7 @@ pub fn run() {
         .on_window_event(|_window, event| {
             // 当主窗口被销毁或应用退出时，清理代理进程
             if let tauri::WindowEvent::Destroyed = event {
-                let mut guard = crate::services::proxy_server::PROXY_CONNECTION.lock().unwrap();
-                if let Some(stream) = guard.as_mut() {
-                    let cmd = crate::services::proxy_server::ProxyCommand {
-                        path: "".to_string(),
-                        args: None,
-                        action: Some("shutdown".to_string()),
-                    };
-                    if let Ok(mut payload) = serde_json::to_vec(&cmd) {
-                        payload.push(b'\n');
-                        let _ = std::io::Write::write_all(stream, &payload);
-                    }
-                }
+                let _ = crate::services::proxy_server::shutdown_proxy();
             }
         })
         .run(tauri::generate_context!())

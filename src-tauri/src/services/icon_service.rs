@@ -7,11 +7,11 @@ fn icon_cache() -> &'static DashMap<String, Vec<u8>> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, String> {
+pub fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, crate::services::error::ServiceError> {
     if decoded_path.starts_with(r"\\") {
         let err_msg = format!("UNC paths are not allowed for icon extraction: {}", decoded_path);
         tracing::warn!("{}", err_msg);
-        return Err(err_msg);
+        return Err(crate::services::error::ServiceError::Security(err_msg));
     }
 
     let cache = icon_cache();
@@ -26,11 +26,11 @@ pub fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, String> {
     } else {
         let err_msg = format!("Failed to extract icon for {}", decoded_path);
         tracing::warn!("{}", err_msg);
-        Err(err_msg)
+        Err(crate::services::error::ServiceError::Internal(err_msg))
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_icon_data(_decoded_path: &str) -> Result<Vec<u8>, String> {
-    Err("Not supported on this OS".to_string())
+pub fn get_icon_data(_decoded_path: &str) -> Result<Vec<u8>, crate::services::error::ServiceError> {
+    Err(crate::services::error::ServiceError::Internal("Not supported on this OS".to_string()))
 }

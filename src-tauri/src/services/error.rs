@@ -22,4 +22,7 @@ pub enum ServiceError {
 
     #[error("Concurrency error: {0}")]
     Concurrency(String),
+
+    #[error("Crypto error: {0}")]
+    Crypto(String),
 }

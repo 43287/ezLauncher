@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["rdev",[["impl UnsafeUnpin for <a class=\"enum\" href=\"rdev/enum.Button.html\" title=\"enum rdev::Button\">Button</a>",1,["rdev::rdev::Button"]],["impl UnsafeUnpin for <a class=\"enum\" href=\"rdev/enum.DisplayError.html\" title=\"enum rdev::DisplayError\">DisplayError</a>",1,["rdev::rdev::DisplayError"]],["impl UnsafeUnpin for <a class=\"enum\" href=\"rdev/enum.EventType.html\" title=\"enum rdev::EventType\">EventType</a>",1,["rdev::rdev::EventType"]],["impl UnsafeUnpin for <a class=\"enum\" href=\"rdev/enum.GrabError.html\" title=\"enum rdev::GrabError\">GrabError</a>",1,["rdev::rdev::GrabError"]],["impl UnsafeUnpin for <a class=\"enum\" href=\"rdev/enum.Key.html\" title=\"enum rdev::Key\">Key</a>",1,["rdev::rdev::Key"]],["impl UnsafeUnpin for <a class=\"enum\" href=\"rdev/enum.ListenError.html\" title=\"enum rdev::ListenError\">ListenError</a>",1,["rdev::rdev::ListenError"]],["impl UnsafeUnpin for <a class=\"struct\" href=\"rdev/struct.Event.html\" title=\"struct rdev::Event\">Event</a>",1,["rdev::rdev::Event"]],["impl UnsafeUnpin for <a class=\"struct\" href=\"rdev/struct.Keyboard.html\" title=\"struct rdev::Keyboard\">Keyboard</a>",1,["rdev::windows::keyboard::Keyboard"]],["impl UnsafeUnpin for <a class=\"struct\" href=\"rdev/struct.SimulateError.html\" title=\"struct rdev::SimulateError\">SimulateError</a>",1,["rdev::rdev::SimulateError"]]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[1371]}

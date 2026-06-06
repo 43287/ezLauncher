@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { LaunchItem } from "../types";
+import { ShortcutCatcher } from "./ShortcutCatcher";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -18,30 +19,44 @@ const InputGroup: React.FC<{
   label: string;
   value: string;
   onChange: (val: string) => void;
-  placeholder?: string;
   multiline?: boolean;
-}> = ({ label, value, onChange, placeholder, multiline }) => (
+  tooltip?: string;
+}> = ({ label, value, onChange, multiline, tooltip }) => (
   <div className={cn("flex flex-col gap-1.5", multiline ? "items-start" : "items-start")}>
-    <label className={cn("text-gray-900 dark:text-gray-100 font-medium text-xs ml-0.5", multiline && "pt-1")}>
-      {label}
-    </label>
+    <div className="flex items-center">
+      <label className={cn("text-gray-900 dark:text-gray-100 font-medium text-xs ml-0.5", multiline && "pt-1")}>
+        {label}
+      </label>
+      {tooltip && (
+        <div className="group flex items-center ml-1">
+          <svg className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500 transition-colors cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div className="fixed hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] leading-relaxed rounded-md shadow-lg z-[9999] whitespace-normal mt-6">
+            {tooltip.split('\\n').map((line, i) => (
+              <React.Fragment key={i}>
+                {line}
+                {i !== tooltip.split('\\n').length - 1 && <br />}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
     <div className="w-full">
       {multiline ? (
         <textarea
           value={value}
-          aria-label={label}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          rows={3}
-          className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 resize-none transition-colors"
+          rows={5}
+          className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
+          style={{ minHeight: '120px' }}
         />
       ) : (
         <input
           type="text"
           value={value}
-          aria-label={label}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
           className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
         />
       )}
@@ -61,7 +76,6 @@ const ToggleGroup: React.FC<{
         <input
           type="checkbox"
           className="sr-only peer"
-          aria-label={label}
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
         />
@@ -98,19 +112,77 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
   
   // 附加参数
   const [args, setArgs] = useState(app.args || "");
+  const [cwd, setCwd] = useState(app.cwd || "");
+  const [envVariables, setEnvVariables] = useState(app.envVariables || "");
   const [runAsAdmin, setRunAsAdmin] = useState(app.runAsAdmin || false);
 
+  // 脚本专属参数
+  const [scriptPath, setScriptPath] = useState(app.type === 'script' ? (app.args || "") : "");
+  const [executorPath, setExecutorPath] = useState(app.type === 'script' ? (app.executablePath || "") : "");
+
+  // 命令专属参数
+  const [commandText, setCommandText] = useState(app.type === 'command' ? (app.args || "") : "");
+  const [shell, setShell] = useState<'pwsh' | 'cmd' | 'bash'>(
+    app.type === 'command' ? ((app.executablePath as any) || 'pwsh') : 'pwsh'
+  );
+  const [inTerminal, setInTerminal] = useState(app.type === 'command' ? (app.inTerminal || false) : false);
+
+  const handleScriptPathChange = (path: string) => {
+    setScriptPath(path);
+    // 尝试自动匹配执行器
+    if (!executorPath) {
+      const lowerPath = path.toLowerCase();
+      if (lowerPath.endsWith('.py')) {
+        setExecutorPath('python.exe');
+      } else if (lowerPath.endsWith('.js')) {
+        setExecutorPath('node.exe');
+      } else if (lowerPath.endsWith('.bat') || lowerPath.endsWith('.cmd')) {
+        setExecutorPath('cmd.exe');
+      } else if (lowerPath.endsWith('.ps1')) {
+        setExecutorPath('powershell.exe');
+      } else if (lowerPath.endsWith('.sh')) {
+        setExecutorPath('bash.exe');
+      } else if (lowerPath.endsWith('.lua')) {
+        setExecutorPath('lua.exe');
+      }
+    }
+    // 尝试自动填充名称
+    if (!name && path) {
+      const match = path.match(/[^\\/]+$/);
+      if (match) {
+        setName(match[0].replace(/\.[^/.]+$/, ""));
+      }
+    }
+  };
+
   const handleSave = () => {
-    onSave({
+    const finalApp = {
       ...app,
       name,
       shortcut: shortcut || null,
-      executablePath,
-      url,
       iconUrl,
-      args,
+      cwd,
+      envVariables,
       runAsAdmin,
-    });
+    };
+
+    if (app.type === 'script') {
+      finalApp.executablePath = executorPath;
+      finalApp.args = scriptPath;
+      if (!finalApp.cwd) {
+        finalApp.cwd = "{target_path}"; // 默认起始位置为目标路径
+      }
+    } else if (app.type === 'command') {
+      finalApp.executablePath = shell;
+      finalApp.args = commandText;
+      finalApp.inTerminal = inTerminal;
+    } else {
+      finalApp.executablePath = executablePath;
+      finalApp.url = url;
+      finalApp.args = args;
+    }
+
+    onSave(finalApp);
     handleClose();
   };
 
@@ -164,7 +236,6 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
               type="button"
               onClick={handleClose} 
               className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 rounded-md"
-              title="取消"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -205,12 +276,36 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                     <InputGroup label="URL" value={url} onChange={setUrl} />
                   )}
 
+                  {app.type === 'script' && (
+                    <>
+                      <InputGroup 
+                        label="脚本文件路径" 
+                        value={scriptPath} 
+                        onChange={handleScriptPathChange} 
+                        multiline 
+                      />
+                      <InputGroup 
+                        label="执行器路径" 
+                        value={executorPath} 
+                        onChange={setExecutorPath} 
+                      />
+                    </>
+                  )}
+
+                  {app.type === 'command' && (
+                    <InputGroup 
+                      label="执行命令" 
+                      value={commandText} 
+                      onChange={setCommandText} 
+                      multiline 
+                    />
+                  )}
+
                   {app.type === 'app' && (
                     <InputGroup 
                       label="启动参数" 
                       value={args} 
                       onChange={setArgs} 
-                      placeholder="如: --hidden\n每行一个参数" 
                       multiline 
                     />
                   )}
@@ -247,7 +342,6 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                       <input
                         type="text"
                         value={(iconUrl && iconUrl.startsWith('http://ezicon.localhost/')) ? decodeURIComponent(iconUrl.replace('http://ezicon.localhost/', '')) : iconUrl}
-                        aria-label="图标 URL"
                         onChange={(e) => {
                           const val = e.target.value;
                           // 如果用户输入了普通路径，且不是 http 或 ezicon 开头，尝试将其转换为 ezicon
@@ -258,7 +352,6 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                             setIconUrl(val);
                           }
                         }}
-                        placeholder="手动输入图片 URL 或路径"
                         className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
                       />
                       <div className="flex space-x-2">
@@ -294,19 +387,63 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
 
               <div className={activeCategory === '高级' ? 'col-start-1 row-start-1 flex flex-col h-full' : 'col-start-1 row-start-1 flex flex-col h-full invisible pointer-events-none'}>
                 <div className="space-y-4">
-                  <InputGroup 
-                    label="全局快捷键" 
-                    value={shortcut} 
-                    onChange={setShortcut} 
-                    placeholder="如: Ctrl+Shift+A" 
-                  />
-
-                  {app.type === 'app' && (
-                    <ToggleGroup 
-                      label="管理员权限" 
-                      checked={runAsAdmin} 
-                      onChange={setRunAsAdmin} 
+                  <div className="flex flex-col gap-1.5 items-start">
+                    <label className="text-gray-900 dark:text-gray-100 font-medium text-xs ml-0.5">
+                      全局快捷键
+                    </label>
+                    <ShortcutCatcher
+                      value={shortcut}
+                      onChange={setShortcut}
                     />
+                  </div>
+
+                  {app.type === 'command' && (
+                    <div className="flex flex-col gap-1.5 items-start">
+                      <label className="text-gray-900 dark:text-gray-100 font-medium text-xs ml-0.5">
+                        Shell
+                      </label>
+                      <select
+                        value={shell}
+                        onChange={(e) => setShell(e.target.value as any)}
+                        className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
+                      >
+                        <option value="pwsh" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">PowerShell 7 (pwsh)</option>
+                        <option value="powershell" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">Windows PowerShell</option>
+                        <option value="cmd" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">Command Prompt (cmd)</option>
+                        <option value="bash" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">Bash</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {(app.type === 'app' || app.type === 'script' || app.type === 'command') && (
+                    <>
+                      <InputGroup 
+                        label="起始位置 (CWD)" 
+                        value={cwd} 
+                        onChange={setCwd} 
+                      />
+
+                      <InputGroup 
+                        label="环境变量" 
+                        value={envVariables} 
+                        onChange={setEnvVariables} 
+                        multiline
+                      />
+
+                      {app.type === 'command' && (
+                        <ToggleGroup 
+                          label="以终端进程启动" 
+                          checked={inTerminal} 
+                          onChange={setInTerminal} 
+                        />
+                      )}
+
+                      <ToggleGroup 
+                        label="管理员权限" 
+                        checked={runAsAdmin} 
+                        onChange={setRunAsAdmin} 
+                      />
+                    </>
                   )}
                 </div>
                 

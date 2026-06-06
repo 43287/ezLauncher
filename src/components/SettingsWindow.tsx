@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useSettings } from '../hooks/useSettings';
+import { useAppStore } from '../store/useAppStore';
 import { SettingSchema } from '../types';
+import { ShortcutCatcher } from './ShortcutCatcher';
 
 const SETTINGS_SCHEMA: SettingSchema[] = [
+  {
+    id: 'summonShortcut',
+    category: '快捷键管理',
+    label: '呼出面板',
+    description: '全局快捷键，用于快速唤醒 ezLaunch 面板',
+    type: 'shortcut',
+    defaultValue: 'Alt+Space',
+  },
   {
     id: 'autoStart',
     category: '通用',
     label: '开机自启',
     description: '随系统启动时自动运行',
-    type: 'switch',
-    defaultValue: false,
-  },
-  {
-    id: 'wheelReverse',
-    category: '通用',
-    label: '滚轮反转',
-    description: '鼠标上下滚动效果反转',
     type: 'switch',
     defaultValue: false,
   },
@@ -49,10 +51,30 @@ interface SettingsWindowProps {
 
 export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const { settings, updateSetting } = useSettings();
+  const apps = useAppStore(state => state.apps);
   
-  // 提取所有唯一分类
-  const categories = Array.from(new Set(SETTINGS_SCHEMA.map(s => s.category)));
-  const [activeCategory, setActiveCategory] = useState(categories[0]);
+  // 提取应用自身配置的快捷键
+  const appShortcuts = apps
+    .filter(app => app.shortcut)
+    .map(app => ({
+      id: `shortcut_${app.id}`,
+      category: '快捷键管理',
+      label: `启动 ${app.name}`,
+      description: `用于快速启动 ${app.name}`,
+      type: 'readonly_shortcut' as any,
+      defaultValue: app.shortcut,
+      appId: app.id
+    }));
+
+  const fullSchema = [...appShortcuts, ...SETTINGS_SCHEMA];
+  
+  // 提取所有唯一分类，并排序（确保"快捷键管理"在合适位置）
+  const categories = Array.from(new Set(fullSchema.map(s => s.category)));
+  // 我们强制把快捷键管理放在通用后面，或者就保持目前的顺序（按声明顺序，所以把 appShortcuts 放在后面或者手动指定顺序）
+  const orderedCategories = ['通用', '快捷键管理', '外观'].filter(c => categories.includes(c));
+  const finalCategories = Array.from(new Set([...orderedCategories, ...categories]));
+
+  const [activeCategory, setActiveCategory] = useState(finalCategories[0]);
   const wheelTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isVisible, setIsVisible] = useState(false);
@@ -131,6 +153,22 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
             </div>
           </div>
         );
+      case 'shortcut':
+        return (
+          <ShortcutCatcher
+            value={value as string}
+            onChange={(val) => updateSetting(schema.id, val)}
+            defaultValue={schema.defaultValue as string}
+          />
+        );
+      case 'readonly_shortcut':
+        return (
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-mono bg-black/5 dark:bg-white/10 px-2 py-1 rounded-md text-gray-700 dark:text-gray-300">
+              {schema.defaultValue as string}
+            </span>
+          </div>
+        );
       default:
         return null;
     }
@@ -150,7 +188,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
           {/* Header - 横向 Tab + 占位 (无保存) */}
           <div className="flex justify-between items-center px-4 py-2 bg-transparent">
             <div className="flex gap-1 overflow-x-auto scrollbar-hidden">
-              {categories.map(category => (
+              {finalCategories.map(category => (
                 <button
                   key={category}
                   onClick={() => setActiveCategory(category)}
@@ -183,11 +221,11 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
             onWheel={(e) => {
               e.stopPropagation();
               if (!wheelTimeoutRef.current) {
-                const currentIndex = categories.findIndex(c => c === activeCategory);
-                if (e.deltaY > 0 && currentIndex < categories.length - 1) {
-                  setActiveCategory(categories[currentIndex + 1]);
+                const currentIndex = finalCategories.findIndex(c => c === activeCategory);
+                if (e.deltaY > 0 && currentIndex < finalCategories.length - 1) {
+                  setActiveCategory(finalCategories[currentIndex + 1]);
                 } else if (e.deltaY < 0 && currentIndex > 0) {
-                  setActiveCategory(categories[currentIndex - 1]);
+                  setActiveCategory(finalCategories[currentIndex - 1]);
                 }
                 wheelTimeoutRef.current = setTimeout(() => {
                   wheelTimeoutRef.current = null;
@@ -197,9 +235,9 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
           >
             <div className="flex-1 overflow-y-auto scrollbar-hidden pr-1">
               <div className="grid grid-cols-1 grid-rows-1">
-                {categories.map((category) => (
+                {finalCategories.map((category) => (
                   <div key={category} className={activeCategory === category ? 'col-start-1 row-start-1 space-y-4' : 'col-start-1 row-start-1 space-y-4 invisible pointer-events-none'}>
-                    {SETTINGS_SCHEMA.filter(schema => schema.category === category).map((schema) => (
+                    {fullSchema.filter(schema => schema.category === category).map((schema) => (
                       <div key={schema.id} className="flex justify-between items-center bg-black/5 dark:bg-white/5 px-3 h-11 rounded-md">
                         <div className="flex items-center space-x-1">
                           <div className="text-gray-900 dark:text-gray-100 font-medium text-xs whitespace-nowrap">{schema.label}</div>

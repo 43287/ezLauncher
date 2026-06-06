@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { tauriApi } from "../api/tauri";
 import { LaunchItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { buildLaunchContext } from "../components/ShortcutItem";
 
 export function useGlobalDrag(
   setIsDraggingFile: (dragging: boolean) => void,
@@ -55,8 +56,9 @@ export function useGlobalDrag(
               const targetApp = state.apps.find(a => a.id === hoveredId);
               if (targetApp && targetApp.type === 'app' && targetApp.executablePath) {
                 try {
+                  const { argsArray, cwd, envs } = buildLaunchContext(targetApp, paths);
                   await tauriApi.hideWindow();
-                  await tauriApi.launchApp(targetApp.executablePath, paths, false);
+                  await tauriApi.launchApp(targetApp.executablePath, argsArray, false, cwd, envs);
                 } catch (error) {
                   console.error("Failed to launch app with args:", error);
                 }

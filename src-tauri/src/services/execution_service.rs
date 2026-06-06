@@ -1,9 +1,10 @@
 use std::path::Path;
+use std::collections::HashMap;
 
 use crate::services::error::ServiceError;
 
 pub trait ExecutionServiceTrait: Send + Sync {
-    fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool) -> Result<(), ServiceError>;
+    fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool, cwd: Option<String>, envs: Option<HashMap<String, String>>) -> Result<(), ServiceError>;
     fn extract_file_info(&self, file_path: String) -> Result<ExtractedFileInfo, ServiceError>;
 }
 
@@ -22,19 +23,19 @@ impl ExecutionService {
 }
 
 impl ExecutionServiceTrait for ExecutionService {
-    fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool) -> Result<(), ServiceError> {
+    fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool, cwd: Option<String>, envs: Option<HashMap<String, String>>) -> Result<(), ServiceError> {
         tracing::info!("====> 尝试启动目标进程: {} {:?} (管理员: {})", executable_path, args, run_as_admin);
         
         // 对于管理员提权启动，如果直接传入的是 .lnk 快捷方式，底层 Proxy 的 cmd.spawn() 会报 os error 193 
         // 因此我们在 service 层将 lnk 解析为真实的 target path 再发给 Proxy
         let final_path = executable_path.to_string();
         let final_args = args.clone();
-        
-            if run_as_admin && executable_path.to_lowercase().ends_with(".lnk") {
-                // Since our custom extract_file_info only returns (name, path, icon_url),
-                // we'll just rely on the path we have. Proxy fallback logic will handle it.
-            }
-        crate::services::os::windows::launch_app_windows(&final_path, final_args, run_as_admin)
+            
+        if run_as_admin {
+            crate::services::proxy_server::request_admin_launch(&final_path, final_args, cwd, envs)
+        } else {
+            crate::services::os::windows::launch_app_windows(&final_path, final_args, cwd, envs)
+        }
     }
 
     fn extract_file_info(&self, file_path: String) -> Result<ExtractedFileInfo, ServiceError> {
@@ -77,7 +78,8 @@ mod tests {
     #[test]
     fn test_launch_app_invalid_path() {
         let service = ExecutionService::new();
-        let result = service.launch_app("invalid_executable_path_12345.exe", None, false);
+        let result = service.launch_app("invalid_executable_path_12345.exe", None, false, None, None);
         // 对于 Windows 下使用 ShellExecuteW 的情况，可能返回 err。此处仅作调用测试
+        assert!(result.is_err(), "Launch app should fail with invalid path");
     }
 }

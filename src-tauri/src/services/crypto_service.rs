@@ -8,9 +8,11 @@ use windows::Win32::Foundation::{LocalFree, HLOCAL};
 use windows::core::PCWSTR;
 
 pub trait CryptoServiceTrait: Send + Sync {
-    fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, String>;
-    fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+    fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError>;
+    fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError>;
 }
+
+const DPAPI_ENTROPY: &[u8] = b"ezLaunch_DPAPI_entropy_v1_8a9f3b2";
 
 pub struct CryptoService;
 
@@ -28,14 +30,14 @@ impl CryptoService {
 
 impl CryptoServiceTrait for CryptoService {
     #[cfg(target_os = "windows")]
-    fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+    fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError> {
         let mut data_blob = CRYPT_INTEGER_BLOB {
             cbData: data.len() as u32,
             pbData: data.as_ptr() as *mut _,
         };
 
         // Application-specific entropy to prevent other programs running as the same user from decrypting
-        let entropy_bytes = b"ezLaunch_DPAPI_entropy_v1_8a9f3b2";
+        let entropy_bytes = DPAPI_ENTROPY;
         let mut entropy_blob = CRYPT_INTEGER_BLOB {
             cbData: entropy_bytes.len() as u32,
             pbData: entropy_bytes.as_ptr() as *mut _,
@@ -63,19 +65,19 @@ impl CryptoServiceTrait for CryptoService {
                 let _ = LocalFree(HLOCAL(encrypted_blob.pbData as *mut _));
                 Ok(result)
             } else {
-                Err(format!("CryptProtectData failed: {:?}", success))
+                Err(crate::services::error::ServiceError::Crypto(format!("CryptProtectData failed: {:?}", success)))
             }
         }
     }
 
     #[cfg(target_os = "windows")]
-    fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+    fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError> {
         let mut data_blob = CRYPT_INTEGER_BLOB {
             cbData: data.len() as u32,
             pbData: data.as_ptr() as *mut _,
         };
 
-        let entropy_bytes = b"ezLaunch_DPAPI_entropy_v1_8a9f3b2";
+        let entropy_bytes = DPAPI_ENTROPY;
         let mut entropy_blob = CRYPT_INTEGER_BLOB {
             cbData: entropy_bytes.len() as u32,
             pbData: entropy_bytes.as_ptr() as *mut _,
@@ -103,18 +105,18 @@ impl CryptoServiceTrait for CryptoService {
                 let _ = LocalFree(HLOCAL(decrypted_blob.pbData as *mut _));
                 Ok(result)
             } else {
-                Err(format!("CryptUnprotectData failed: {:?}", success))
+                Err(crate::services::error::ServiceError::Crypto(format!("CryptUnprotectData failed: {:?}", success)))
             }
         }
     }
 
     #[cfg(not(target_os = "windows"))]
-    fn encrypt_data(&self, _data: &[u8]) -> Result<Vec<u8>, String> {
-        Err("DPAPI encryption is only supported on Windows".to_string())
+    fn encrypt_data(&self, _data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError> {
+        Err(crate::services::error::ServiceError::Crypto("DPAPI encryption is only supported on Windows".to_string()))
     }
 
     #[cfg(not(target_os = "windows"))]
-    fn decrypt_data(&self, _data: &[u8]) -> Result<Vec<u8>, String> {
-        Err("DPAPI decryption is only supported on Windows".to_string())
+    fn decrypt_data(&self, _data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError> {
+        Err(crate::services::error::ServiceError::Crypto("DPAPI decryption is only supported on Windows".to_string()))
     }
 }

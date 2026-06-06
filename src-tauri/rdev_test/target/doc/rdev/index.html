@@ -1,0 +1,198 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Simple library to listen and send events to keyboard and mouse on MacOS, Windows and Linux (x11)."><title>rdev - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-e56847b5.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="rdev" data-themes="" data-resource-suffix="" data-rustdoc-version="1.91.0 (f8297e351 2025-10-28)" data-channel="1.91.0" data-search-js="search-e256b49e.js" data-stringdex-js="stringdex-c3e638e9.js" data-settings-js="settings-c38705f0.js" ><script src="../static.files/storage-e2aeef58.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-6dc2a7f3.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate rdev</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../rdev/index.html">rdev</a><span class="version">0.5.3</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#listening-to-global-events" title="Listening to global events">Listening to global events</a><ul><li><a href="#os-caveats" title="OS Caveats:">OS Caveats:</a></li><li><a href="#mac-os" title="Mac OS">Mac OS</a></li><li><a href="#linux" title="Linux">Linux</a></li></ul></li><li><a href="#sending-some-events" title="Sending some events">Sending some events</a></li><li><a href="#main-structs" title="Main structs">Main structs</a><ul><li><a href="#event" title="Event">Event</a></li><li><a href="#eventtype" title="EventType">EventType</a></li></ul></li><li><a href="#getting-the-main-screen-size" title="Getting the main screen size">Getting the main screen size</a></li><li><a href="#keyboard-state" title="Keyboard state">Keyboard state</a></li><li><a href="#grabbing-global-events-requires-unstable_grab-feature" title="Grabbing global events. (Requires `unstable_grab` feature)">Grabbing global events. (Requires <code>unstable_grab</code> feature)</a><ul><li><a href="#os-caveats-1" title="OS Caveats:">OS Caveats:</a></li></ul></li><li><a href="#serialization" title="Serialization">Serialization</a></li></ul><h3><a href="#structs">Crate Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#traits" title="Traits">Traits</a></li><li><a href="#functions" title="Functions">Functions</a></li><li><a href="#types" title="Type Aliases">Type Aliases</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><h1>Crate <span>rdev</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/rdev/lib.rs.html#1-410">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Simple library to listen and send events to keyboard and mouse on MacOS, Windows and Linux
+(x11).</p>
+<p>You can also check out <a href="https://github.com/Enigo-rs/Enigo">Enigo</a> which is another
+crate which helped me write this one.</p>
+<p>This crate is so far a pet project for me to understand the rust ecosystem.</p>
+<h2 id="listening-to-global-events"><a class="doc-anchor" href="#listening-to-global-events">§</a>Listening to global events</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>rdev::{listen, Event};
+
+<span class="comment">// This will block.
+</span><span class="kw">if let </span><span class="prelude-val">Err</span>(error) = listen(callback) {
+    <span class="macro">println!</span>(<span class="string">"Error: {:?}"</span>, error)
+}
+
+<span class="kw">fn </span>callback(event: Event) {
+    <span class="macro">println!</span>(<span class="string">"My callback {:?}"</span>, event);
+    <span class="kw">match </span>event.name {
+        <span class="prelude-val">Some</span>(string) =&gt; <span class="macro">println!</span>(<span class="string">"User wrote {:?}"</span>, string),
+        <span class="prelude-val">None </span>=&gt; (),
+    }
+}</code></pre></div><h3 id="os-caveats"><a class="doc-anchor" href="#os-caveats">§</a>OS Caveats:</h3>
+<p>When using the <code>listen</code> function, the following caveats apply:</p>
+<h3 id="mac-os"><a class="doc-anchor" href="#mac-os">§</a>Mac OS</h3>
+<p>The process running the blocking <code>listen</code> function (loop) needs to be the parent process (no fork before).
+The process needs to be granted access to the Accessibility API (ie. if you’re running your process
+inside Terminal.app, then Terminal.app needs to be added in
+System Preferences &gt; Security &amp; Privacy &gt; Privacy &gt; Accessibility)
+If the process is not granted access to the Accessibility API, MacOS will silently ignore rdev’s
+<code>listen</code> calleback and will not trigger it with events. No error will be generated.</p>
+<h3 id="linux"><a class="doc-anchor" href="#linux">§</a>Linux</h3>
+<p>The <code>listen</code> function uses X11 APIs, and so will not work in Wayland or in the linux kernel virtual console</p>
+<h2 id="sending-some-events"><a class="doc-anchor" href="#sending-some-events">§</a>Sending some events</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>rdev::{simulate, Button, EventType, Key, SimulateError};
+<span class="kw">use </span>std::{thread, time};
+
+<span class="kw">fn </span>send(event_type: <span class="kw-2">&amp;</span>EventType) {
+    <span class="kw">let </span>delay = time::Duration::from_millis(<span class="number">20</span>);
+    <span class="kw">match </span>simulate(event_type) {
+        <span class="prelude-val">Ok</span>(()) =&gt; (),
+        <span class="prelude-val">Err</span>(SimulateError) =&gt; {
+            <span class="macro">println!</span>(<span class="string">"We could not send {:?}"</span>, event_type);
+        }
+    }
+    <span class="comment">// Let ths OS catchup (at least MacOS)
+    </span>thread::sleep(delay);
+}
+
+send(<span class="kw-2">&amp;</span>EventType::KeyPress(Key::KeyS));
+send(<span class="kw-2">&amp;</span>EventType::KeyRelease(Key::KeyS));
+
+send(<span class="kw-2">&amp;</span>EventType::MouseMove { x: <span class="number">0.0</span>, y: <span class="number">0.0 </span>});
+send(<span class="kw-2">&amp;</span>EventType::MouseMove { x: <span class="number">400.0</span>, y: <span class="number">400.0 </span>});
+send(<span class="kw-2">&amp;</span>EventType::ButtonPress(Button::Left));
+send(<span class="kw-2">&amp;</span>EventType::ButtonRelease(Button::Right));
+send(<span class="kw-2">&amp;</span>EventType::Wheel {
+    delta_x: <span class="number">0</span>,
+    delta_y: <span class="number">1</span>,
+});</code></pre></div><h2 id="main-structs"><a class="doc-anchor" href="#main-structs">§</a>Main structs</h2><h3 id="event"><a class="doc-anchor" href="#event">§</a>Event</h3>
+<p>In order to detect what a user types, we need to plug to the OS level management
+of keyboard state (modifiers like shift, ctrl, but also dead keys if they exist).</p>
+<p><code>EventType</code> corresponds to a <em>physical</em> event, corresponding to QWERTY layout
+<code>Event</code> corresponds to an actual event that was received and <code>Event.name</code> reflects
+what key was interpreted by the OS at that time, it will respect the layout.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="doccomment">/// When events arrive from the system we can add some information
+/// time is when the event was received.
+</span><span class="attr">#[derive(Debug)]
+</span><span class="kw">pub struct </span>Event {
+    <span class="kw">pub </span>time: SystemTime,
+    <span class="kw">pub </span>name: <span class="prelude-ty">Option</span>&lt;String&gt;,
+    <span class="kw">pub </span>event_type: EventType,
+}</code></pre></div>
+<p>Be careful, Event::name, might be None, but also String::from(“”), and might contain
+not displayable unicode characters. We send exactly what the OS sends us so do some sanity checking
+before using it.
+Caveat: Dead keys don’t function yet on Linux</p>
+<h3 id="eventtype"><a class="doc-anchor" href="#eventtype">§</a>EventType</h3>
+<p>In order to manage different OS, the current EventType choices is a mix&amp;match
+to account for all possible events.
+There is a safe mechanism to detect events no matter what, which are the
+Unknown() variant of the enum which will contain some OS specific value.
+Also not that not all keys are mapped to an OS code, so simulate might fail if you
+try to send an unmapped key. Sending Unknown() variants will always work (the OS might
+still reject it).</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="doccomment">/// In order to manage different OS, the current EventType choices is a mix&amp;match
+/// to account for all possible events.
+</span><span class="attr">#[derive(Debug)]
+</span><span class="kw">pub enum </span>EventType {
+    <span class="doccomment">/// The keys correspond to a standard qwerty layout, they don't correspond
+    /// To the actual letter a user would use, that requires some layout logic to be added.
+    </span>KeyPress(Key),
+    KeyRelease(Key),
+    <span class="doccomment">/// Some mouse will have more than 3 buttons, these are not defined, and different OS will
+    /// give different Unknown code.
+    </span>ButtonPress(Button),
+    ButtonRelease(Button),
+    <span class="doccomment">/// Values in pixels
+    </span>MouseMove {
+        x: f64,
+        y: f64,
+    },
+    <span class="doccomment">/// Note: On Linux, there is no actual delta the actual values are ignored for delta_x
+    /// and we only look at the sign of delta_y to simulate wheelup or wheeldown.
+    </span>Wheel {
+        delta_x: i64,
+        delta_y: i64,
+    },
+}</code></pre></div><h2 id="getting-the-main-screen-size"><a class="doc-anchor" href="#getting-the-main-screen-size">§</a>Getting the main screen size</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>rdev::{display_size};
+
+<span class="kw">let </span>(w, h) = display_size().unwrap();
+<span class="macro">assert!</span>(w &gt; <span class="number">0</span>);
+<span class="macro">assert!</span>(h &gt; <span class="number">0</span>);</code></pre></div><h2 id="keyboard-state"><a class="doc-anchor" href="#keyboard-state">§</a>Keyboard state</h2>
+<p>We can define a dummy Keyboard, that we will use to detect
+what kind of EventType trigger some String. We get the currently used
+layout for now !
+Caveat : This is layout dependent. If your app needs to support
+layout switching don’t use this !
+Caveat: On Linux, the dead keys mechanism is not implemented.
+Caveat: Only shift and dead keys are implemented, Alt+unicode code on windows
+won’t work.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>rdev::{Keyboard, EventType, Key, KeyboardState};
+
+<span class="kw">let </span><span class="kw-2">mut </span>keyboard = Keyboard::new().unwrap();
+<span class="kw">let </span>string = keyboard.add(<span class="kw-2">&amp;</span>EventType::KeyPress(Key::KeyS));
+<span class="comment">// string == Some("s")</span></code></pre></div><h2 id="grabbing-global-events-requires-unstable_grab-feature"><a class="doc-anchor" href="#grabbing-global-events-requires-unstable_grab-feature">§</a>Grabbing global events. (Requires <code>unstable_grab</code> feature)</h2>
+<p>Installing this library with the <code>unstable_grab</code> feature adds the <code>grab</code> function
+which hooks into the global input device event stream.
+by suppling this function with a callback, you can intercept
+all keyboard and mouse events before they are delivered to applications / window managers.
+In the callback, returning None ignores the event and returning the event let’s it pass.
+There is no modification of the event possible here (yet).</p>
+<p>Note: the use of the word <code>unstable</code> here refers specifically to the fact that the <code>grab</code> API is unstable and subject to change</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attr">#[cfg(feature = <span class="string">"unstable_grab"</span>)]
+</span><span class="kw">use </span>rdev::{grab, Event, EventType, Key};
+
+<span class="attr">#[cfg(feature = <span class="string">"unstable_grab"</span>)]
+</span><span class="kw">let </span>callback = |event: Event| -&gt; <span class="prelude-ty">Option</span>&lt;Event&gt; {
+    <span class="kw">if let </span>EventType::KeyPress(Key::CapsLock) = event.event_type {
+        <span class="macro">println!</span>(<span class="string">"Consuming and cancelling CapsLock"</span>);
+        <span class="prelude-val">None  </span><span class="comment">// CapsLock is now effectively disabled
+    </span>}
+    <span class="kw">else </span>{ <span class="prelude-val">Some</span>(event) }
+};
+<span class="comment">// This will block.
+</span><span class="attr">#[cfg(feature = <span class="string">"unstable_grab"</span>)]
+</span><span class="kw">if let </span><span class="prelude-val">Err</span>(error) = grab(callback) {
+    <span class="macro">println!</span>(<span class="string">"Error: {:?}"</span>, error)
+}</code></pre></div><h3 id="os-caveats-1"><a class="doc-anchor" href="#os-caveats-1">§</a>OS Caveats:</h3>
+<p>When using the <code>listen</code> and/or <code>grab</code> functions, the following caveats apply:</p>
+<h4 id="mac-os-1"><a class="doc-anchor" href="#mac-os-1">§</a>Mac OS</h4>
+<p>The process running the blocking <code>grab</code> function (loop) needs to be the parent process (no fork before).
+The process needs to be granted access to the Accessibility API (ie. if you’re running your process
+inside Terminal.app, then Terminal.app needs to be added in
+System Preferences &gt; Security &amp; Privacy &gt; Privacy &gt; Accessibility)
+If the process is not granted access to the Accessibility API, the <code>grab</code> call will fail with an
+EventTapError (at least in MacOS 10.15, possibly other versions as well)</p>
+<h4 id="linux-1"><a class="doc-anchor" href="#linux-1">§</a>Linux</h4>
+<p>The <code>grab</code> function use the <code>evdev</code> library to intercept events, so they will work with both X11 and Wayland
+In order for this to work, the process runnign the <code>listen</code> or <code>grab</code> loop needs to either run as root (not recommended),
+or run as a user who’s a member of the <code>input</code> group (recommended)
+Note: on some distros, the group name for evdev access is called <code>plugdev</code>, and on some systems, both groups can exist.
+When in doubt, add your user to both groups if they exist.</p>
+<h2 id="serialization"><a class="doc-anchor" href="#serialization">§</a>Serialization</h2>
+<p>Event data returned by the <code>listen</code> and <code>grab</code> functions can be serialized and de-serialized with
+Serde if you install this library with the <code>serialize</code> feature.</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Event.html" title="struct rdev::Event">Event</a></dt><dd>When events arrive from the OS they get some additional information added from
+EventType, which is the time when this event was received, and the name Option
+which contains what characters should be emmitted from that event. This relies
+on the OS layout and keyboard state machinery.
+Caveat: Dead keys don’t function on Linux(X11) yet. You will receive None for
+a dead key, and the raw letter instead of accentuated letter.</dd><dt><a class="struct" href="struct.Keyboard.html" title="struct rdev::Keyboard">Keyboard</a></dt><dt><a class="struct" href="struct.SimulateError.html" title="struct rdev::SimulateError">Simulate<wbr>Error</a></dt><dd>Marking an error when we tried to simulate and event</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.Button.html" title="enum rdev::Button">Button</a></dt><dd>Standard mouse buttons
+Some mice have more than 3 buttons. These are not defined, and different
+OSs will give different <code>Button::Unknown</code> values.</dd><dt><a class="enum" href="enum.DisplayError.html" title="enum rdev::DisplayError">Display<wbr>Error</a></dt><dd>Errors that occur when trying to get display size.</dd><dt><a class="enum" href="enum.EventType.html" title="enum rdev::EventType">Event<wbr>Type</a></dt><dd>In order to manage different OSs, the current EventType choices are a mix and
+match to account for all possible events.</dd><dt><a class="enum" href="enum.GrabError.html" title="enum rdev::GrabError">Grab<wbr>Error</a></dt><dd>Errors that occur when trying to grab OS events.
+Be careful on Mac, not setting accessibility does not cause an error
+it justs ignores events.</dd><dt><a class="enum" href="enum.Key.html" title="enum rdev::Key">Key</a></dt><dd>Key names based on physical location on the device
+Merge Option(MacOS) and Alt(Windows, Linux) into Alt
+Merge Windows (Windows), Meta(Linux), Command(MacOS) into Meta
+Characters based on Qwerty layout, don’t use this for characters as it WILL
+depend on the layout. Use Event.name instead. Key modifiers gives those keys
+a different value too.
+Careful, on Windows KpReturn does not exist, it’ s strictly equivalent to Return, also Keypad keys
+get modified if NumLock is Off and ARE pagedown and so on.</dd><dt><a class="enum" href="enum.ListenError.html" title="enum rdev::ListenError">Listen<wbr>Error</a></dt><dd>Errors that occur when trying to capture OS events.
+Be careful on Mac, not setting accessibility does not cause an error
+it justs ignores events.</dd></dl><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><dl class="item-table"><dt><a class="trait" href="trait.KeyboardState.html" title="trait rdev::KeyboardState">Keyboard<wbr>State</a></dt><dd>We can define a dummy Keyboard, that we will use to detect
+what kind of EventType trigger some String. We get the currently used
+layout for now !
+Caveat : This is layout dependent. If your app needs to support
+layout switching don’t use this !
+Caveat: On Linux, the dead keys mechanism is not implemented.
+Caveat: Only shift and dead keys are implemented, Alt+unicode code on windows
+won’t work.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.display_size.html" title="fn rdev::display_size">display_<wbr>size</a></dt><dd>Returns the size in pixels of the main screen.
+This is useful to use with x, y from MouseMove Event.</dd><dt><a class="fn" href="fn.listen.html" title="fn rdev::listen">listen</a></dt><dd>Listening to global events. Caveat: On MacOS, you require the listen
+loop needs to be the primary app (no fork before) and need to have accessibility
+settings enabled.</dd><dt><a class="fn" href="fn.simulate.html" title="fn rdev::simulate">simulate</a></dt><dd>Sending some events</dd></dl><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><dl class="item-table"><dt><a class="type" href="type.GrabCallback.html" title="type rdev::GrabCallback">Grab<wbr>Callback</a></dt><dd>Callback type to send to grab function.</dd></dl></section></div></main></body></html>

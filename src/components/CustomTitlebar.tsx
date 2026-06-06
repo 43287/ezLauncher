@@ -22,7 +22,6 @@ export const CustomTitlebar: React.FC = () => {
       <div 
         className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-1 cursor-pointer hover:text-blue-500 transition-colors"
         onDoubleClick={handleAdminRestart}
-        title="双击以管理员权限重启"
       >
         ezLauncher
       </div>
@@ -30,8 +29,6 @@ export const CustomTitlebar: React.FC = () => {
         <button
           onClick={() => appWindow.minimize().catch(console.error)}
           className="w-6 h-6 flex items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-          title="最小化"
-          aria-label="最小化窗口"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
             <rect x="2" y="5" width="8" height="2" />
@@ -40,8 +37,6 @@ export const CustomTitlebar: React.FC = () => {
         <button
           onClick={() => appWindow.hide().catch(console.error)}
           className="w-6 h-6 flex items-center justify-center hover:bg-red-500 hover:text-white rounded text-gray-700 dark:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-          title="关闭"
-          aria-label="关闭窗口"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
             <path d="M3.5 3.5L8.5 8.5M8.5 3.5L3.5 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

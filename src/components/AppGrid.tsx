@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { LaunchItem } from "../types";
 import { ShortcutItem } from "./ShortcutItem";
 import {
@@ -18,23 +18,55 @@ import {
 } from "@dnd-kit/sortable";
 
 import { useSettings } from "../hooks/useSettings";
+import { useAppStore } from "../store/useAppStore";
+import { useGlobalDrag } from "../hooks/useGlobalDrag";
 
 interface AppGridProps {
-  apps: LaunchItem[];
-  isDraggingFile?: boolean;
-  hoveredItemId?: string | null;
-  onAppRemove?: (id: string) => void;
-  onAppReorder?: (apps: LaunchItem[]) => void;
-  onAppRename?: (id: string, newName: string) => void;
-  onEditProperties?: (app: LaunchItem) => void;
 }
 
 /**
  * 应用网格组件，支持拖拽添加应用
  */
-export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, hoveredItemId = null, onAppRemove, onAppReorder, onAppRename, onEditProperties }) => {
+export const AppGrid: React.FC<AppGridProps> = () => {
   const { settings } = useSettings();
   const columns = parseInt(String(settings.columns || '4'), 10) || 4;
+
+  const apps = useAppStore((state) => state.apps);
+  const setApps = useAppStore((state) => state.setApps);
+  const activeLeftTab = useAppStore((state) => state.activeLeftTab);
+  const activeTopTab = useAppStore((state) => state.activeTopTab);
+
+  const appsByCat = useMemo(() => {
+    return apps.reduce(
+      (acc, app) => {
+        const catId = app.categoryId || "";
+        if (!acc[catId]) acc[catId] = [];
+        acc[catId].push(app);
+        return acc;
+      },
+      {} as Record<string, LaunchItem[]>,
+    );
+  }, [apps]);
+
+  const filteredApps = useMemo(() => {
+    return (appsByCat[activeLeftTab] || []).filter(
+      (app) => app.columnId === activeTopTab,
+    );
+  }, [appsByCat, activeLeftTab, activeTopTab]);
+
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+
+  const handleSetIsDraggingFile = useCallback(
+    (dragging: boolean) => setIsDraggingFile(dragging),
+    [],
+  );
+  const handleSetHoveredItemId = useCallback(
+    (id: string | null) => setHoveredItemId(id),
+    [],
+  );
+
+  useGlobalDrag(handleSetIsDraggingFile, handleSetHoveredItemId);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -47,17 +79,24 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, 
     })
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = apps.findIndex((app) => app.id === active.id);
-      const newIndex = apps.findIndex((app) => app.id === over.id);
+      const oldIndex = filteredApps.findIndex((app) => app.id === active.id);
+      const newIndex = filteredApps.findIndex((app) => app.id === over.id);
 
-      const newApps = arrayMove(apps, oldIndex, newIndex);
-      onAppReorder?.(newApps);
+      const newFilteredApps = arrayMove(filteredApps, oldIndex, newIndex);
+      
+      setApps((prev: LaunchItem[]) => {
+        const otherApps = prev.filter(
+          (app) =>
+            app.categoryId !== activeLeftTab || app.columnId !== activeTopTab,
+        );
+        return [...otherApps, ...newFilteredApps];
+      });
     }
-  };
+  }, [filteredApps, setApps, activeLeftTab, activeTopTab]);
 
   return (
       <div
@@ -67,12 +106,12 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, 
               ? "bg-transparent border-2 border-transparent" // Item hovered, no global highlight
               : "bg-blue-50 dark:bg-blue-900/20 border-2 border-dashed border-blue-400"
             : "bg-transparent border-2 border-transparent"
-        } ${apps.length === 0 ? '' : 'p-2'}`}
+        } ${filteredApps.length === 0 ? '' : 'p-2'}`}
         role="region"
         aria-label="应用快捷方式网格，支持拖拽文件添加"
         aria-live="polite"
       >
-        {apps.length === 0 ? (
+        {filteredApps.length === 0 ? (
         <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 space-y-4">
           <div className="text-4xl">📁</div>
           <p className="text-sm font-medium">拖拽应用程序（.exe）到此处</p>
@@ -84,21 +123,18 @@ export const AppGrid: React.FC<AppGridProps> = ({ apps, isDraggingFile = false, 
           onDragEnd={handleDragEnd}
         >
           <SortableContext
-            items={apps.map(app => app.id)}
+            items={filteredApps.map(app => app.id)}
             strategy={rectSortingStrategy}
           >
             <div 
               className="grid gap-2 items-start content-start" 
               style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
             >
-              {apps.map((app) => (
+              {filteredApps.map((app) => (
                 <ShortcutItem
                   key={app.id}
                   app={app}
                   isHovered={hoveredItemId === app.id}
-                  onRemove={onAppRemove}
-                  onEditProperties={onEditProperties}
-                  onRename={onAppRename}
                 />
               ))}
             </div>

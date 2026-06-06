@@ -1,26 +1,92 @@
 import React, { useState } from "react";
 import { LaunchItem } from "../types";
-import { invoke } from "@tauri-apps/api/core";
+import { tauriApi } from "../api/tauri";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useContextMenuStore } from "../store/useContextMenuStore";
+import { useAppStore } from "../store/useAppStore";
+import { useModalStore } from "../store/useModalStore";
+
+export const buildLaunchContext = (app: LaunchItem, dropPaths?: string[]) => {
+  // 1. 处理环境变量
+  let envs: Record<string, string> | undefined = undefined;
+  if (app.envVariables) {
+    envs = {};
+    app.envVariables.split('\n').forEach(line => {
+      const parts = line.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        const val = parts.slice(1).join('=').trim();
+        if (key) envs![key] = val;
+      }
+    });
+    if (Object.keys(envs).length === 0) envs = undefined;
+  }
+
+  // 2. 处理 args 宏替换
+  let finalArgsStr = app.args || "";
+  let dropHandledInArgs = false;
+  if (dropPaths && dropPaths.length > 0) {
+    const firstPath = dropPaths[0];
+    const parentDir = firstPath.substring(0, Math.max(firstPath.lastIndexOf('\\'), firstPath.lastIndexOf('/')));
+
+    if (finalArgsStr.includes("{target_path}") || finalArgsStr.includes("{target_file}") || finalArgsStr.includes("{{drop_file}}")) {
+      // 替换 {target_path}
+      if (parentDir) {
+        finalArgsStr = finalArgsStr.replace(/\{target_path\}/g, `"${parentDir}"`);
+      }
+      
+      // 替换 {target_file} 和旧版兼容的 {{drop_file}}
+      const replacement = dropPaths.map(p => `"${p}"`).join(' ');
+      finalArgsStr = finalArgsStr.replace(/\{target_file\}/g, replacement);
+      finalArgsStr = finalArgsStr.replace(/\{\{drop_file\}\}/g, replacement);
+      
+      dropHandledInArgs = true;
+    } else {
+      // 默认追加行为
+      finalArgsStr += " " + dropPaths.map(p => `"${p}"`).join(' ');
+    }
+  }
+
+  // 智能解析带引号的参数
+  const argsArray: string[] = [];
+  if (finalArgsStr) {
+    const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
+    let match;
+    while ((match = regex.exec(finalArgsStr)) !== null) {
+      argsArray.push(match[1] || match[2] || match[0]);
+    }
+  }
+
+  // 3. 处理 cwd 宏替换
+  let finalCwd = app.cwd || undefined;
+  if (dropPaths && dropPaths.length > 0 && finalCwd) {
+    const firstPath = dropPaths[0];
+    const parentDir = firstPath.substring(0, Math.max(firstPath.lastIndexOf('\\'), firstPath.lastIndexOf('/')));
+    if (parentDir) {
+      finalCwd = finalCwd.replace(/\{target_path\}/g, parentDir);
+      finalCwd = finalCwd.replace(/\{\{drop_dir\}\}/g, parentDir);
+    }
+  }
+
+  return { argsArray, cwd: finalCwd, envs, dropHandledInArgs };
+};
 
 interface ShortcutItemProps {
   app: LaunchItem;
   isHovered?: boolean;
-  onRemove?: (id: string) => void;
-  onEditProperties?: (app: LaunchItem) => void;
-  onRename?: (id: string, newName: string) => void;
 }
 
 /**
  * 快捷方式项组件
  * @param app 应用实体信息
  */
-export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = false, onRemove, onEditProperties, onRename }) => {
+export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHovered = false }) => {
   const [isEditingSeparator, setIsEditingSeparator] = useState(false);
   const [separatorName, setSeparatorName] = useState(app.name);
-  const { openMenu } = useContextMenuStore();
+  const openMenu = useContextMenuStore((state) => state.openMenu);
+  const { removeApp, updateApp } = useAppStore();
+  const openEditApp = useModalStore((state) => state.openEditApp);
 
   const {
     attributes,
@@ -33,22 +99,48 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
 
   const style = {
     transform: CSS.Translate.toString(transform),
-    transition,
+    // If dnd-kit provides a transition (during drop animation), use it.
+    // Otherwise, if we are actively dragging, disable transition completely to ensure it follows the cursor instantly.
+    transition: transition || (isDragging ? 'none' : undefined),
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1 : 0,
   };
 
   const handleLaunch = async (e: React.MouseEvent) => {
     if (app.type === 'separator') return;
-    const runAsAdmin = e.shiftKey || app.runAsAdmin;
+    const runAsAdmin = e.shiftKey || app.runAsAdmin || false;
     try {
       // 启动前先隐藏窗口，提升响应速度体验
-      await invoke("hide_window");
+      await tauriApi.hideWindow();
       if (app.type === 'link' && app.url) {
-        // Handle link launching
-        await invoke("launch_app", { executablePath: app.url, runAsAdmin });
+        // 对于网页链接，交给 Rust 后端调用 open crate 处理（Windows 上通常使用 ShellExecute 打开默认浏览器）
+        await tauriApi.launchApp(app.url, [], runAsAdmin);
+      } else if (app.type === 'command') {
+        const { argsArray, cwd, envs } = buildLaunchContext(app);
+        
+        let shellExe = app.executablePath || 'pwsh';
+        let shellArgs: string[] = [];
+        
+        if (shellExe === 'pwsh' || shellExe === 'powershell') {
+          shellArgs = ['-NoProfile', '-Command', argsArray.join(' ')];
+        } else if (shellExe === 'cmd') {
+          shellArgs = ['/C', argsArray.join(' ')];
+        } else if (shellExe === 'bash') {
+          shellArgs = ['-c', argsArray.join(' ')];
+        } else {
+          shellArgs = argsArray;
+        }
+
+        // 如果用户要求在终端中运行，我们通过 cmd /C start 来弹出一个新的终端窗口
+        if (app.inTerminal) {
+          const terminalArgs = ['/C', 'start', shellExe, ...shellArgs];
+          await tauriApi.launchApp('cmd.exe', terminalArgs, runAsAdmin, cwd, envs);
+        } else {
+          await tauriApi.launchApp(shellExe, shellArgs, runAsAdmin, cwd, envs);
+        }
       } else if (app.executablePath) {
-        await invoke("launch_app", { executablePath: app.executablePath, args: app.args, runAsAdmin });
+        const { argsArray, cwd, envs } = buildLaunchContext(app);
+        await tauriApi.launchApp(app.executablePath, argsArray, runAsAdmin, cwd, envs);
       }
     } catch (error) {
       console.error("Failed to launch app:", error);
@@ -65,7 +157,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
         label: "编辑属性",
         onClick: (e: React.MouseEvent) => {
           e.stopPropagation();
-          onEditProperties?.(app);
+          openEditApp(app);
         }
       });
       menuItems.push({ isSeparator: true, label: "" });
@@ -74,7 +166,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
       label: "删除",
       onClick: (e: React.MouseEvent) => {
         e.stopPropagation();
-        onRemove?.(app.id);
+        removeApp(app.id);
       }
     });
 
@@ -88,7 +180,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
 
   const handleSeparatorKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      onRename?.(app.id, separatorName);
+      updateApp(app.id, { name: separatorName });
       setIsEditingSeparator(false);
     } else if (e.key === 'Escape') {
       setSeparatorName(app.name);
@@ -97,7 +189,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
   };
 
   const handleSeparatorBlur = () => {
-    onRename?.(app.id, separatorName);
+    updateApp(app.id, { name: separatorName });
     setIsEditingSeparator(false);
   };
 
@@ -112,7 +204,9 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
           data-app-id={app.id}
           onContextMenu={handleContextMenu}
           onDoubleClick={handleSeparatorDoubleClick}
-          className={`col-span-full flex items-center py-2 cursor-grab active:cursor-grabbing rounded-lg transition-all duration-300 apple-ease h-[40px] shrink-0 ${
+          className={`col-span-full flex items-center py-2 cursor-grab active:cursor-grabbing rounded-lg h-[40px] shrink-0 ${
+            isDragging ? '' : 'transition-all duration-300 apple-ease'
+          } ${
             isHovered ? 'bg-blue-50/50 dark:bg-blue-900/30 ring-1 ring-blue-400' : ''
           }`}
         >
@@ -150,12 +244,13 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
           data-app-id={app.id}
           onDoubleClick={handleLaunch}
           onContextMenu={handleContextMenu}
-          className={`aspect-square w-full max-w-[90px] flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-300 apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 cursor-grab active:cursor-grabbing active:scale-95 ${
+          className={`aspect-square w-full max-w-[90px] flex flex-col items-center justify-center p-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 cursor-grab active:cursor-grabbing active:scale-95 ${
+            isDragging ? '' : 'transition-all duration-300 apple-ease'
+          } ${
             isHovered 
               ? 'bg-blue-50/50 dark:bg-blue-900/30 ring-1 ring-blue-400 shadow-soft' // Lighter highlight for drag-to-item
               : 'hover:bg-black/5 dark:hover:bg-white/10'
           }`}
-          aria-label={`双击启动 ${app.name}`}
         >
           {app.iconUrl ? (
             <img
@@ -180,4 +275,4 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = ({ app, isHovered = fal
       </div>
     </>
   );
-};
+});
