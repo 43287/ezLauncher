@@ -39,10 +39,18 @@ function App() {
     if (isLoaded && !hasInitialized) {
       if (settings.apps) setApps(settings.apps as unknown as LaunchItem[]);
       if (settings.leftTabs) setLeftTabs(settings.leftTabs as unknown as Tab[]);
-      if (settings.topTabs) setTopTabs(settings.topTabs as unknown as Tab[]);
+      if (settings.topTabs) {
+        if (Array.isArray(settings.topTabs)) {
+          // migrate array to dictionary based on current activeLeftTab (or default '2' if not available)
+          const currentLeftTab = (settings.activeLeftTab as string) || activeLeftTab || '2';
+          setTopTabs({ [currentLeftTab]: settings.topTabs as unknown as Tab[] });
+        } else {
+          setTopTabs(settings.topTabs as unknown as Record<string, Tab[]>);
+        }
+      }
       setHasInitialized(true);
     }
-  }, [isLoaded, hasInitialized, settings, setApps, setLeftTabs, setTopTabs]);
+  }, [isLoaded, hasInitialized, settings, setApps, setLeftTabs, setTopTabs, activeLeftTab]);
 
   useStoreSync(updateSetting, hasInitialized);
 
@@ -50,7 +58,7 @@ function App() {
 
   const { handleWheel } = useWheelNavigation(
     null,
-    topTabs,
+    topTabs[activeLeftTab] || [],
     activeTopTab,
     setActiveTopTab,
     leftTabs,

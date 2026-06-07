@@ -31,6 +31,7 @@ export function useWheelNavigation(
     const isHorizontalScroll = Math.abs(e.deltaX) > Math.abs(e.deltaY);
 
     if (e.shiftKey || isHorizontalScroll) {
+      if (topTabs.length === 0) return;
       const currentIndex = topTabs.findIndex(t => t.id === activeTopTab);
       const delta = isHorizontalScroll ? e.deltaX : e.deltaY;
       
@@ -40,6 +41,7 @@ export function useWheelNavigation(
         setActiveTopTab(topTabs[(currentIndex - 1 + topTabs.length) % topTabs.length].id);
       }
     } else {
+      if (leftTabs.length === 0) return;
       const currentIndex = leftTabs.findIndex(t => t.id === activeLeftTab);
       if (e.deltaY > 0) {
         setActiveLeftTab(leftTabs[(currentIndex + 1) % leftTabs.length].id);

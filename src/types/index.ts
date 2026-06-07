@@ -15,6 +15,7 @@ export interface LaunchItem {
   inTerminal?: boolean;     // for 'command'
   categoryId?: string;
   columnId?: string;
+  isDir?: boolean;
 }
 
 export type SettingType = 'switch' | 'input' | 'select' | 'shortcut' | 'readonly_shortcut';

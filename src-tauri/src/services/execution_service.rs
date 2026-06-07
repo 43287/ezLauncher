@@ -52,12 +52,19 @@ impl ExecutionServiceTrait for ExecutionService {
             .to_string();
 
         let encoded_path = percent_encoding::utf8_percent_encode(&file_path, percent_encoding::NON_ALPHANUMERIC).to_string();
-        let icon_url = Some(format!("http://ezicon.localhost/{}", encoded_path));
+        let is_dir = path.is_dir();
+        
+        let icon_url = if is_dir {
+            None
+        } else {
+            Some(format!("http://ezicon.localhost/{}", encoded_path))
+        };
 
         Ok(ExtractedFileInfo {
             name,
             path: file_path,
             icon_url,
+            is_dir,
         })
     }
 }
@@ -69,6 +76,7 @@ pub struct ExtractedFileInfo {
     pub name: String,
     pub path: String,
     pub icon_url: Option<String>,
+    pub is_dir: bool,
 }
 
 #[cfg(test)]

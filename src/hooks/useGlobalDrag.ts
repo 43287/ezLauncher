@@ -81,6 +81,7 @@ export function useGlobalDrag(
                 const info = await tauriApi.extractFileInfo(path);
                 finalName = info.name || finalName;
                 let iconUrl = info.iconUrl || undefined;
+                let isDir = info.isDir || false;
 
                 const newApp: LaunchItem = {
                   id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -88,6 +89,7 @@ export function useGlobalDrag(
                   type: 'app',
                   executablePath: path,
                   iconUrl,
+                  isDir,
                   shortcut: null,
                   categoryId: state.activeLeftTab,
                   columnId: state.activeTopTab

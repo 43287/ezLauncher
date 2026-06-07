@@ -3,12 +3,14 @@ import { useAppStore, Tab } from "../../store/useAppStore";
 import { useContextMenuStore } from "../../store/useContextMenuStore";
 
 export function TopBar() {
-  const { topTabs, setTopTabs, activeTopTab, setActiveTopTab } = useAppStore();
+  const { topTabs, setTopTabs, activeTopTab, setActiveTopTab, activeLeftTab } = useAppStore();
   const { openMenu } = useContextMenuStore();
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const currentTopTabs = topTabs[activeLeftTab] || [];
 
   useEffect(() => {
     if (editingTabId && editInputRef.current) {
@@ -26,7 +28,13 @@ export function TopBar() {
   const saveTabName = () => {
     if (editingTabId) {
       if (editValue.trim() !== '') {
-        setTopTabs((tabs: Tab[]) => tabs.map(t => t.id === editingTabId ? { ...t, name: editValue.trim() } : t));
+        setTopTabs((prev: Record<string, Tab[]>) => {
+          const current = prev[activeLeftTab] || [];
+          return {
+            ...prev,
+            [activeLeftTab]: current.map(t => t.id === editingTabId ? { ...t, name: editValue.trim() } : t)
+          };
+        });
       }
     }
     setEditingTabId(null);
@@ -41,13 +49,30 @@ export function TopBar() {
   };
 
   const handleDeleteTab = (tabId: string) => {
-    setTopTabs((prev: Tab[]) => {
-      const newTabs = prev.filter(t => t.id !== tabId);
-      if (activeTopTab === tabId && newTabs.length > 0) {
-        setActiveTopTab(newTabs[0].id);
+    setTopTabs((prev: Record<string, Tab[]>) => {
+      const current = prev[activeLeftTab] || [];
+      const newTabs = current.filter(t => t.id !== tabId);
+      if (activeTopTab === tabId) {
+        setActiveTopTab(newTabs.length > 0 ? newTabs[0].id : '');
       }
-      return newTabs;
+      return {
+        ...prev,
+        [activeLeftTab]: newTabs
+      };
     });
+  };
+
+  const handleContainerDoubleClick = () => {
+    const newTabId = Date.now().toString();
+    const newTab = { id: newTabId, name: 'New' };
+    setTopTabs((prev: Record<string, Tab[]>) => {
+      const current = prev[activeLeftTab] || [];
+      return {
+        ...prev,
+        [activeLeftTab]: [...current, newTab]
+      };
+    });
+    setActiveTopTab(newTabId);
   };
 
   const handleTabContextMenu = (e: React.MouseEvent, tab: Tab) => {
@@ -61,19 +86,25 @@ export function TopBar() {
   };
 
   return (
-    <div className="flex px-4 pt-3 pb-2 gap-2 bg-transparent" data-tauri-drag-region role="tablist" aria-label="次级导航">
-      {topTabs.map((tab) => {
+    <div 
+      className="flex px-4 pt-3 pb-2 gap-2 bg-transparent" 
+      data-tauri-drag-region 
+      role="tablist" 
+      aria-label="次级导航"
+      onDoubleClick={handleContainerDoubleClick}
+    >
+      {currentTopTabs.map((tab) => {
         const isActive = activeTopTab === tab.id;
         const isEditing = editingTabId === tab.id;
 
         return (
           <div 
             key={tab.id} 
-            className="flex"
+            className="flex-1 min-w-0"
             onContextMenu={(e) => handleTabContextMenu(e, tab)}
           >
             {isEditing ? (
-              <div className="flex h-8 items-center relative">
+              <div className="flex h-8 items-center relative w-full">
                 <input
                   ref={editInputRef}
                   type="text"
@@ -82,23 +113,19 @@ export function TopBar() {
                   onChange={(e) => setEditValue(e.target.value)}
                   onBlur={saveTabName}
                   onKeyDown={handleInputKeyDown}
-                  className="px-4 h-full text-sm font-medium bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-full outline-none text-gray-900 dark:text-gray-100 text-center box-border absolute left-1/2 -translate-x-1/2 min-w-full z-10"
+                  className="px-4 w-full h-full text-sm font-medium bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-full outline-none text-gray-900 dark:text-gray-100 text-center box-border"
                   onClick={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
-                  style={{ width: `calc(32px + ${editValue.length}ch)` }}
                 />
-                <div className="px-4 h-full text-sm font-medium invisible whitespace-nowrap">
-                  {tab.name}
-                </div>
               </div>
             ) : (
-              <div className="flex h-8 items-center">
+              <div className="flex h-8 items-center w-full">
                 <button
                   role="tab"
                   aria-selected={isActive}
                   onClick={() => setActiveTopTab(tab.id)}
                   onDoubleClick={(e) => handleTabDoubleClick(tab, e)}
-                  className={`px-4 h-full rounded-full text-sm font-medium transition-all apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 active:scale-95 ${
+                  className={`w-full px-2 h-full rounded-full text-sm font-medium transition-all apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 active:scale-95 truncate ${
                     isActive
                       ? 'bg-black/80 text-white dark:bg-white/90 dark:text-gray-900 shadow-soft'
                       : 'text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10'

@@ -258,6 +258,10 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
               alt={`${app.name} icon`}
               className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
             />
+          ) : app.isDir ? (
+            <svg className="w-12 h-12 mb-2 pointer-events-none drop-shadow-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 5C4 3.89543 4.89543 3 6 3H8.70711C9.2375 3 9.74618 3.21071 10.1213 3.58579L11.4142 4.87868C11.7893 5.25376 12.298 5.46447 12.8284 5.46447H18C19.1046 5.46447 20 6.3599 20 7.46447V19C20 20.1046 19.1046 21 18 21H6C4.89543 21 4 20.1046 4 19V5Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           ) : (
             <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-lg flex items-center justify-center text-xl font-bold mb-2 shadow-sm pointer-events-none">
               {app.name.charAt(0).toUpperCase()}

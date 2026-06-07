@@ -28,8 +28,8 @@ export const tauriApi = {
 
   extractFileInfo: async (
     filePath: string,
-  ): Promise<{ name?: string; iconUrl?: string }> => {
-    return invoke<{ name?: string; iconUrl?: string }>("extract_file_info", {
+  ): Promise<{ name?: string; iconUrl?: string; isDir?: boolean }> => {
+    return invoke<{ name?: string; iconUrl?: string; isDir?: boolean }>("extract_file_info", {
       filePath,
     });
   },
