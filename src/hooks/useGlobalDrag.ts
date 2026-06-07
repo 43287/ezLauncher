@@ -4,6 +4,7 @@ import { tauriApi } from "../api/tauri";
 import { LaunchItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
 import { buildLaunchContext } from "../components/ShortcutItem";
+import { getIconForExtension, getInterpreterForExtension } from "../utils/icons";
 
 export function useGlobalDrag(
   setIsDraggingFile: (dragging: boolean) => void,
@@ -70,24 +71,53 @@ export function useGlobalDrag(
             isExtracting = true;
             for (const path of paths) {
               try {
-                // 优先尝试作为可执行文件或快捷方式提取图标
                 let finalName = "Unknown";
-                
                 const fileNameMatch = path.match(/[^\\/]+$/);
                 if (fileNameMatch) {
                   finalName = fileNameMatch[0].replace(/\.[^/.]+$/, "");
                 }
 
+                let ext = "";
+                const extMatch = path.match(/\.([^/.]+)$/);
+                if (extMatch) {
+                  ext = extMatch[1].toLowerCase();
+                }
+
                 const info = await tauriApi.extractFileInfo(path);
                 finalName = info.name || finalName;
-                let iconUrl = info.iconUrl || undefined;
                 let isDir = info.isDir || false;
+                
+                let iconUrl = info.iconUrl || undefined;
+                let type: 'app' | 'script' = 'app';
+                let executablePath = path;
+                let args = undefined;
+
+                if (!isDir && ext) {
+                  const svgIcon = getIconForExtension(ext);
+                  const interpreter = getInterpreterForExtension(ext);
+
+                  if (svgIcon) {
+                    iconUrl = svgIcon;
+                    if (interpreter) {
+                      type = 'script';
+                      executablePath = interpreter;
+                      args = path;
+                    }
+                  } else {
+                    iconUrl = path;
+                  }
+                } else if (isDir) {
+                  iconUrl = path;
+                } else {
+                  iconUrl = path;
+                }
 
                 const newApp: LaunchItem = {
                   id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
                   name: finalName,
-                  type: 'app',
-                  executablePath: path,
+                  type,
+                  executablePath,
+                  args,
                   iconUrl,
                   isDir,
                   shortcut: null,

@@ -2,18 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { LaunchItem } from "../types";
 import { ShortcutItem } from "./ShortcutItem";
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 
@@ -32,7 +21,6 @@ export const AppGrid: React.FC<AppGridProps> = () => {
   const columns = parseInt(String(settings.columns || '4'), 10) || 4;
 
   const apps = useAppStore((state) => state.apps);
-  const setApps = useAppStore((state) => state.setApps);
   const activeLeftTab = useAppStore((state) => state.activeLeftTab);
   const activeTopTab = useAppStore((state) => state.activeTopTab);
 
@@ -68,36 +56,6 @@ export const AppGrid: React.FC<AppGridProps> = () => {
 
   useGlobalDrag(handleSetIsDraggingFile, handleSetHoveredItemId);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      const oldIndex = filteredApps.findIndex((app) => app.id === active.id);
-      const newIndex = filteredApps.findIndex((app) => app.id === over.id);
-
-      const newFilteredApps = arrayMove(filteredApps, oldIndex, newIndex);
-      
-      setApps((prev: LaunchItem[]) => {
-        const otherApps = prev.filter(
-          (app) =>
-            app.categoryId !== activeLeftTab || app.columnId !== activeTopTab,
-        );
-        return [...otherApps, ...newFilteredApps];
-      });
-    }
-  }, [filteredApps, setApps, activeLeftTab, activeTopTab]);
-
   return (
       <div
         className={`h-full w-full rounded-2xl transition-all duration-300 apple-ease flex-1 ${
@@ -117,13 +75,8 @@ export const AppGrid: React.FC<AppGridProps> = () => {
           <p className="text-sm font-medium">拖拽应用程序（.exe）到此处</p>
         </div>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
           <SortableContext
-            items={filteredApps.map(app => app.id)}
+            items={filteredApps.map(app => `item-${app.id}`)}
             strategy={rectSortingStrategy}
           >
             <div 
@@ -139,7 +92,6 @@ export const AppGrid: React.FC<AppGridProps> = () => {
               ))}
             </div>
           </SortableContext>
-        </DndContext>
       )}
     </div>
   );

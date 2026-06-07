@@ -51,14 +51,9 @@ impl ExecutionServiceTrait for ExecutionService {
             .unwrap_or("Unknown")
             .to_string();
 
-        let encoded_path = percent_encoding::utf8_percent_encode(&file_path, percent_encoding::NON_ALPHANUMERIC).to_string();
         let is_dir = path.is_dir();
         
-        let icon_url = if is_dir {
-            None
-        } else {
-            Some(format!("http://ezicon.localhost/{}", encoded_path))
-        };
+        let icon_url = Some(file_path.clone());
 
         Ok(ExtractedFileInfo {
             name,

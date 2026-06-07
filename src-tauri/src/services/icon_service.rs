@@ -1,13 +1,70 @@
 use dashmap::DashMap;
 use std::sync::OnceLock;
+use std::path::{Path, PathBuf};
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 fn icon_cache() -> &'static DashMap<String, Vec<u8>> {
     static CACHE: OnceLock<DashMap<String, Vec<u8>>> = OnceLock::new();
     CACHE.get_or_init(DashMap::new)
 }
 
+fn get_cache_dir() -> PathBuf {
+    let mut dir = std::env::current_dir().unwrap_or_default();
+    dir.push("data");
+    dir.push("icon");
+    dir.push("cache");
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(&dir);
+    }
+    dir
+}
+
+fn get_custom_dir() -> PathBuf {
+    let mut dir = std::env::current_dir().unwrap_or_default();
+    dir.push("data");
+    dir.push("icon");
+    dir.push("custom");
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(&dir);
+    }
+    dir
+}
+
+#[tauri::command]
+pub async fn copy_custom_icon(src_path: String) -> Result<String, String> {
+    let path = Path::new(&src_path);
+    if !path.exists() || !path.is_file() {
+        return Err("Source file does not exist".into());
+    }
+    
+    let custom_dir = get_custom_dir();
+    
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png");
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let file_name = format!("{}.{}", timestamp, ext);
+    let dest_path = custom_dir.join(&file_name);
+    
+    std::fs::copy(&path, &dest_path).map_err(|e| e.to_string())?;
+    
+    Ok(format!("ezicon://custom/{}", file_name))
+}
+
 #[cfg(target_os = "windows")]
-pub fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, crate::services::error::ServiceError> {
+pub async fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, crate::services::error::ServiceError> {
+    if decoded_path.starts_with("custom/") {
+        let file_name = decoded_path.strip_prefix("custom/").unwrap();
+        let custom_dir = get_custom_dir();
+        let file_path = custom_dir.join(file_name);
+        if let Ok(data) = tokio::fs::read(&file_path).await {
+            return Ok(data);
+        }
+        return Err(crate::services::error::ServiceError::Internal(format!("Custom icon not found: {}", decoded_path)));
+    }
+
     if decoded_path.starts_with(r"\\") && !decoded_path.starts_with(r"\\?\") {
         let err_msg = format!("UNC paths are not allowed for icon extraction: {}", decoded_path);
         tracing::warn!("{}", err_msg);
@@ -15,18 +72,38 @@ pub fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, crate::services::err
     }
 
     let cache = icon_cache();
-    
     if let Some(cached) = cache.get(decoded_path) {
         return Ok(cached.clone());
     }
     
-    if let Ok(data) = systemicons::get_icon(decoded_path, 32) {
+    // Check disk cache
+    let mut hasher = DefaultHasher::new();
+    decoded_path.hash(&mut hasher);
+    let hash = hasher.finish();
+    let cache_file_name = format!("{:x}.png", hash);
+    let cache_dir = get_cache_dir();
+    let cache_path = cache_dir.join(&cache_file_name);
+    
+    if let Ok(data) = tokio::fs::read(&cache_path).await {
         cache.insert(decoded_path.to_string(), data.clone());
         return Ok(data);
     }
     
-    // Fallback to SHGetFileInfoW
-    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES, SHFILEINFOW};
+    let path_clone = decoded_path.to_string();
+    let data = tokio::task::spawn_blocking(move || {
+        extract_icon_sync(&path_clone)
+    }).await.map_err(|e| crate::services::error::ServiceError::Internal(e.to_string()))??;
+    
+    cache.insert(decoded_path.to_string(), data.clone());
+    let _ = tokio::fs::write(&cache_path, &data).await;
+    
+    Ok(data)
+}
+
+#[cfg(target_os = "windows")]
+fn extract_icon_sync(decoded_path: &str) -> Result<Vec<u8>, crate::services::error::ServiceError> {
+    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHGetImageList, SHGFI_SYSICONINDEX, SHGFI_USEFILEATTRIBUTES, SHFILEINFOW, SHIL_EXTRALARGE};
+    use windows::Win32::UI::Controls::{IImageList, ILD_TRANSPARENT};
     use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
     use std::os::windows::ffi::OsStrExt;
     use std::ffi::OsStr;
@@ -35,8 +112,7 @@ pub fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, crate::services::err
     let wide_path: Vec<u16> = OsStr::new(decoded_path).encode_wide().chain(std::iter::once(0)).collect();
     let mut shfi: SHFILEINFOW = unsafe { mem::zeroed() };
     
-    let mut flags = SHGFI_ICON | SHGFI_LARGEICON;
-    // Check if the path exists, if not, use SHGFI_USEFILEATTRIBUTES
+    let mut flags = SHGFI_SYSICONINDEX;
     if !std::path::Path::new(decoded_path).exists() {
         flags |= SHGFI_USEFILEATTRIBUTES;
     }
@@ -44,25 +120,35 @@ pub fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, crate::services::err
     let result = unsafe {
         SHGetFileInfoW(
             windows::core::PCWSTR(wide_path.as_ptr()),
-            windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES(128), // FILE_ATTRIBUTE_NORMAL
+            windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES(128),
             Some(&mut shfi),
             mem::size_of::<SHFILEINFOW>() as u32,
             flags,
         )
     };
 
-    if result != 0 && !shfi.hIcon.is_invalid() {
-        match hicon_to_png(shfi.hIcon) {
-            Ok(data) => {
-                unsafe { let _ = DestroyIcon(shfi.hIcon); }
-                cache.insert(decoded_path.to_string(), data.clone());
-                return Ok(data);
-            }
-            Err(e) => {
-                unsafe { let _ = DestroyIcon(shfi.hIcon); }
-                tracing::warn!("Failed to convert fallback icon for {}: {}", decoded_path, e);
+    if result != 0 {
+        let index = shfi.iIcon;
+        unsafe {
+            if let Ok(image_list) = SHGetImageList::<IImageList>(SHIL_EXTRALARGE as i32) {
+                if let Ok(hicon) = image_list.GetIcon(index, ILD_TRANSPARENT.0 as u32) {
+                    if !hicon.is_invalid() {
+                        let res = hicon_to_png(hicon);
+                        let _ = DestroyIcon(hicon);
+                        if let Ok(data) = res {
+                            return Ok(data);
+                        }
+                    }
+                }
             }
         }
+    }
+    
+    if let Ok(data) = systemicons::get_icon(decoded_path, 256) {
+        return Ok(data);
+    }
+    if let Ok(data) = systemicons::get_icon(decoded_path, 32) {
+        return Ok(data);
     }
 
     let err_msg = format!("Failed to extract icon for {}", decoded_path);

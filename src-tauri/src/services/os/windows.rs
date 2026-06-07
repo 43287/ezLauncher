@@ -5,7 +5,6 @@ use std::path::Path;
 use std::sync::OnceLock;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 use crate::services::error::ServiceError;
 
@@ -51,9 +50,7 @@ pub fn scan_system_apps() -> Result<Vec<SystemApp>, ServiceError> {
                         // 预解析图标以缓存
                         let _ = crate::services::icon_service::get_icon_data(&path_str);
                         
-                        // 对路径进行 URL 编码以供前端通过 ezicon 协议调用
-                        let encoded_path = utf8_percent_encode(&path_str, NON_ALPHANUMERIC).to_string();
-                        let icon_url = format!("ezicon://localhost/{}", encoded_path);
+                        let icon_url = path_str.clone();
                         
                         apps.push(SystemApp {
                             name: name.to_string(),

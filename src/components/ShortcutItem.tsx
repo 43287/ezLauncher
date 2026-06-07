@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import * as LucideIcons from "lucide-react";
 import { LaunchItem } from "../types";
 import { tauriApi } from "../api/tauri";
 import { useSortable } from "@dnd-kit/sortable";
@@ -6,6 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useContextMenuStore } from "../store/useContextMenuStore";
 import { useAppStore } from "../store/useAppStore";
 import { useModalStore } from "../store/useModalStore";
+import { resolveIcon } from "../utils/icons";
 
 export const buildLaunchContext = (app: LaunchItem, dropPaths?: string[]) => {
   // 1. 处理环境变量
@@ -95,7 +97,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: app.id });
+  } = useSortable({ id: `item-${app.id}` });
 
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -161,6 +163,28 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
         }
       });
       menuItems.push({ isSeparator: true, label: "" });
+
+      menuItems.push({
+        label: "以管理员启动",
+        onClick: (ev: React.MouseEvent) => {
+          ev.stopPropagation();
+          // Simulate Shift+Click to run as admin
+          const pseudoEvent = { ...ev, shiftKey: true } as React.MouseEvent;
+          handleLaunch(pseudoEvent);
+        }
+      });
+
+      const targetPath = app.type === 'script' ? app.args : (app.type === 'app' ? app.executablePath : undefined);
+      if (targetPath) {
+        menuItems.push({
+          label: "打开文件所在位置",
+          onClick: (ev: React.MouseEvent) => {
+            ev.stopPropagation();
+            tauriApi.launchApp('explorer.exe', ['/select,', targetPath], false);
+          }
+        });
+      }
+      menuItems.push({ isSeparator: true, label: "" });
     }
     menuItems.push({
       label: "删除",
@@ -192,6 +216,8 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
     updateApp(app.id, { name: separatorName });
     setIsEditingSeparator(false);
   };
+
+  const resolvedIcon = resolveIcon(app.isDir ? 'dir_fallback_icon' : app.iconUrl);
 
   if (app.type === 'separator') {
     return (
@@ -252,16 +278,21 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
               : 'hover:bg-black/5 dark:hover:bg-white/10'
           }`}
         >
-          {app.iconUrl ? (
+          {resolvedIcon?.type === 'lucide' ? (
+            <div className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none flex items-center justify-center text-gray-800 dark:text-gray-200">
+              {React.createElement((LucideIcons as any)[resolvedIcon.content] || LucideIcons.HelpCircle, { size: '100%', strokeWidth: 1.5 })}
+            </div>
+          ) : resolvedIcon?.type === 'svg' ? (
+            <div 
+              className={`w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none flex items-center justify-center [&>svg]:w-full [&>svg]:h-full ${app.isDir ? 'drop-shadow-sm' : ''}`}
+              dangerouslySetInnerHTML={{ __html: resolvedIcon.content }}
+            />
+          ) : resolvedIcon?.type === 'url' ? (
             <img
-              src={app.iconUrl}
+              src={resolvedIcon.content}
               alt={`${app.name} icon`}
               className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
             />
-          ) : app.isDir ? (
-            <svg className="w-12 h-12 mb-2 pointer-events-none drop-shadow-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4 5C4 3.89543 4.89543 3 6 3H8.70711C9.2375 3 9.74618 3.21071 10.1213 3.58579L11.4142 4.87868C11.7893 5.25376 12.298 5.46447 12.8284 5.46447H18C19.1046 5.46447 20 6.3599 20 7.46447V19C20 20.1046 19.1046 21 18 21H6C4.89543 21 4 20.1046 4 19V5Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
           ) : (
             <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-lg flex items-center justify-center text-xl font-bold mb-2 shadow-sm pointer-events-none">
               {app.name.charAt(0).toUpperCase()}

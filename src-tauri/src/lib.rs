@@ -85,32 +85,37 @@ pub fn run() {
         .manage(std::sync::Arc::new(crate::services::execution_service::ExecutionService::new()) as std::sync::Arc<dyn crate::services::execution_service::ExecutionServiceTrait>)
         .manage(std::sync::Arc::new(crate::services::crypto_service::CryptoService::new()) as std::sync::Arc<dyn crate::services::crypto_service::CryptoServiceTrait>)
         .manage(std::sync::Arc::new(crate::services::store_service::StoreService::new()) as std::sync::Arc<dyn crate::services::store_service::StoreServiceTrait>)
-        .register_uri_scheme_protocol("ezicon", |_app, request| {
+        .register_asynchronous_uri_scheme_protocol("ezicon", |_app, request, responder| {
             let uri_str = request.uri().to_string();
             tracing::info!("ezicon request: {}", uri_str);
             let path_str = request.uri().path().strip_prefix('/').unwrap_or(request.uri().path());
             let decoded_path = percent_encoding::percent_decode_str(path_str).decode_utf8_lossy().to_string();
             tracing::info!("ezicon decoded path: {}", decoded_path);
             
-            match crate::services::icon_service::get_icon_data(&decoded_path) {
-                Ok(icon_data) => {
-                    tauri::http::Response::builder()
-                        .header("Access-Control-Allow-Origin", "*")
-                        .header("Content-Type", "image/png")
-                        .body(icon_data)
-                        .unwrap()
+            tauri::async_runtime::spawn(async move {
+                match crate::services::icon_service::get_icon_data(&decoded_path).await {
+                    Ok(icon_data) => {
+                        let response = tauri::http::Response::builder()
+                            .header("Access-Control-Allow-Origin", "*")
+                            .header("Content-Type", "image/png")
+                            .body(icon_data)
+                            .unwrap();
+                        responder.respond(response);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to get icon data: {:?}", e);
+                        let response = tauri::http::Response::builder()
+                            .status(400)
+                            .header("Access-Control-Allow-Origin", "*")
+                            .body(e.to_string().into_bytes())
+                            .unwrap();
+                        responder.respond(response);
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("Failed to get icon data: {:?}", e);
-                    tauri::http::Response::builder()
-                        .status(400)
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(e.to_string().into_bytes())
-                        .unwrap()
-                }
-            }
+            });
         })
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![])))
         .invoke_handler(tauri::generate_handler![
@@ -124,6 +129,7 @@ pub fn run() {
             application::commands::get_system_apps,
             application::commands::register_shortcut,
             application::commands::unregister_all_shortcuts,
+            crate::services::icon_service::copy_custom_icon,
             hide_window
         ])
         .setup(|app| {
@@ -142,3 +148,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

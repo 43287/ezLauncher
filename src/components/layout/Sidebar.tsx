@@ -1,17 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   useSortable
 } from "@dnd-kit/sortable";
@@ -54,7 +43,7 @@ function SortableTab({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: tab.id });
+  } = useSortable({ id: `leftTab-${tab.id}` });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -170,26 +159,6 @@ export function Sidebar() {
     ], e.clientX, e.clientY);
   };
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setLeftTabs((items: Tab[]) => {
-        const oldIndex = items.findIndex((t) => t.id === active.id);
-        const newIndex = items.findIndex((t) => t.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  };
-
   return (
     <nav 
       className="w-14 flex flex-col items-center py-4 border-r border-black/5 dark:border-white/10 bg-white/40 dark:bg-gray-900/40 backdrop-blur-md"
@@ -207,13 +176,8 @@ export function Sidebar() {
           setActiveLeftTab(newId);
         }}
       >
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
           <SortableContext
-            items={leftTabs.map(t => t.id)}
+            items={leftTabs.map(t => `leftTab-${t.id}`)}
             strategy={verticalListSortingStrategy}
           >
             {leftTabs.map((tab) => (
@@ -233,7 +197,6 @@ export function Sidebar() {
               />
             ))}
           </SortableContext>
-        </DndContext>
       </div>
       
       <div className="mt-auto mb-2 w-10 h-10 flex items-center justify-center" data-tauri-drag-region>

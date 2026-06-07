@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Tab } from '../types';
 
 export function useWheelNavigation(
-  editingTabId: string | null,
+  isLocked: boolean,
   topTabs: Tab[],
   activeTopTab: string,
   setActiveTopTab: (id: string) => void,
@@ -19,7 +19,7 @@ export function useWheelNavigation(
   }, []);
 
   const handleWheel = (e: React.WheelEvent) => {
-    if (editingTabId) return;
+    if (isLocked) return;
     
     if (Math.abs(e.deltaX) < 10 && Math.abs(e.deltaY) < 10) return; // 忽略过小的滚动
 

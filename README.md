@@ -1,6 +1,6 @@
-# ezLaunch (ezLauncher)
+# ezLauncher
 
-ezLaunch 是一款基于 Rust 和 TypeScript (Tauri) 开发的轻量级、高性能 Windows 平台程序启动器。它专注于提供极简的 UI 体验与强大的底层执行控制能力。
+ezLauncher 是一款基于 Rust 和 TypeScript (Tauri) 开发的轻量级、高性能 Windows 平台程序启动器。它专注于提供极简的 UI 体验与强大的底层执行控制能力。
 
 ## 🛠️ 技术栈与架构
 

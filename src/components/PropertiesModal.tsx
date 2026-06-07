@@ -1,8 +1,11 @@
 import React, { useState } from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import * as LucideIcons from "lucide-react";
 import { LaunchItem } from "../types";
 import { ShortcutCatcher } from "./ShortcutCatcher";
+import { resolveIcon } from "../utils/icons";
+import { IconPickerModal } from "./IconPickerModal";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -48,9 +51,8 @@ const InputGroup: React.FC<{
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          rows={5}
-          className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
-          style={{ minHeight: '120px' }}
+          className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors custom-scrollbar"
+          style={{ minHeight: '80px', maxHeight: '200px', resize: 'vertical' }}
         />
       ) : (
         <input
@@ -109,6 +111,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
   const [executablePath, setExecutablePath] = useState(app.executablePath || "");
   const [url, setUrl] = useState(app.url || "");
   const [iconUrl, setIconUrl] = useState(app.iconUrl || "");
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   
   // 附加参数
   const [args, setArgs] = useState(app.args || "");
@@ -186,6 +189,8 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
     handleClose();
   };
 
+  const resolvedIcon = resolveIcon(app.isDir ? 'dir_fallback_icon' : iconUrl);
+
   return (
     <div 
       className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity duration-200 ${isClosing || !isVisible ? 'opacity-0' : 'opacity-100'}`}
@@ -248,6 +253,13 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
         <div 
           className="flex flex-col p-4 bg-transparent rounded-b-xl overflow-hidden" 
           onWheel={(e) => {
+            // Only switch tabs if not scrolling inside a textarea
+            const target = e.target as HTMLElement;
+            if (target.tagName.toLowerCase() === 'textarea') {
+              e.stopPropagation();
+              return;
+            }
+            
             e.stopPropagation();
             if (!wheelTimeoutRef.current) {
               const currentIndex = categories.findIndex(c => c === activeCategory);
@@ -268,7 +280,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                 <div className="space-y-4">
                   <InputGroup label="名称" value={name} onChange={setName} />
 
-                  {app.type === 'app' && (
+                  {(app.type === 'app' || app.isDir) && (
                     <InputGroup label="目标路径" value={executablePath} onChange={setExecutablePath} multiline />
                   )}
 
@@ -293,15 +305,15 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                   )}
 
                   {app.type === 'command' && (
-                    <InputGroup 
-                      label="执行命令" 
-                      value={commandText} 
-                      onChange={setCommandText} 
-                      multiline 
+                    <InputGroup
+                      label="执行命令"
+                      value={commandText}
+                      onChange={setCommandText}
+                      multiline
                     />
                   )}
 
-                  {app.type === 'app' && (
+                  {(app.type === 'app' || app.isDir) && (
                     <InputGroup 
                       label="启动参数" 
                       value={args} 
@@ -325,8 +337,21 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
               <div className={activeCategory === '图标' ? 'col-start-1 row-start-1 flex flex-col h-full' : 'col-start-1 row-start-1 flex flex-col h-full invisible pointer-events-none'}>
                 <div className="flex flex-col items-center space-y-4">
                   <div className="w-20 h-20 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner">
-                    {iconUrl ? (
-                      <img src={iconUrl} alt="Preview" className="w-16 h-16 object-contain" />
+                    {resolvedIcon?.type === 'lucide' ? (
+                      <div className="w-12 h-12 flex items-center justify-center text-gray-800 dark:text-gray-200">
+                        {React.createElement((LucideIcons as any)[resolvedIcon.content] || LucideIcons.HelpCircle, { size: '100%', strokeWidth: 1.5 })}
+                      </div>
+                    ) : resolvedIcon?.type === 'svg' ? (
+                      <div 
+                        className={`w-16 h-16 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full ${app.isDir ? 'drop-shadow-sm' : ''}`}
+                        dangerouslySetInnerHTML={{ __html: resolvedIcon.content }}
+                      />
+                    ) : resolvedIcon?.type === 'url' ? (
+                      <img 
+                        src={resolvedIcon.content} 
+                        alt="Preview" 
+                        className="w-16 h-16 object-contain" 
+                      />
                     ) : (
                       <span className="text-3xl text-gray-400 font-bold">
                         {name ? name.charAt(0).toUpperCase() : '?'}
@@ -334,42 +359,20 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                     )}
                   </div>
                   
-                  <div className="w-full space-y-2">
-                    <label className="block text-xs text-center text-gray-500 dark:text-gray-400">
-                      默认将尝试从目标路径自动提取图标
-                    </label>
-                    <div className="flex flex-col space-y-2">
-                      <input
-                        type="text"
-                        value={(iconUrl && iconUrl.startsWith('http://ezicon.localhost/')) ? decodeURIComponent(iconUrl.replace('http://ezicon.localhost/', '')) : iconUrl}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          // 如果用户输入了普通路径，且不是 http 或 ezicon 开头，尝试将其转换为 ezicon
-                          if (val && !val.startsWith("http") && !val.startsWith("ezicon:")) {
-                            const encodedPath = encodeURIComponent(val).replace(/['()]/g, escape).replace(/\*/g, '%2A');
-                            setIconUrl(`http://ezicon.localhost/${encodedPath}`);
-                          } else {
-                            setIconUrl(val);
-                          }
-                        }}
-                        className="w-full bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
-                      />
-                      <div className="flex space-x-2">
-                        <button 
-                          className="flex-1 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 rounded-md transition-colors apple-ease"
-                          onClick={() => {
-                            // TODO: 接入系统文件选择器
-                          }}
-                        >
-                          浏览本地图片...
-                        </button>
-                        <button 
-                          className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-500/10 hover:bg-red-500/20 rounded-md transition-colors apple-ease"
-                          onClick={() => { setIconUrl(""); }}
-                        >
-                          清除
-                        </button>
-                      </div>
+                  <div className="w-full space-y-2 flex flex-col items-center">
+                    <div className="flex space-x-2 w-full max-w-[250px] mt-2">
+                      <button 
+                        className="flex-1 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 rounded-md transition-colors apple-ease"
+                        onClick={() => setIsIconPickerOpen(true)}
+                      >
+                        更改图标...
+                      </button>
+                      <button 
+                        className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-500/10 hover:bg-red-500/20 rounded-md transition-colors apple-ease"
+                        onClick={() => setIconUrl("")}
+                      >
+                        清除
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -415,7 +418,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                     </div>
                   )}
 
-                  {(app.type === 'app' || app.type === 'script' || app.type === 'command') && (
+                  {(app.type === 'app' || app.type === 'script' || app.type === 'command' || app.isDir) && (
                     <>
                       <InputGroup 
                         label="起始位置 (CWD)" 
@@ -461,6 +464,17 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
           </div>
         </div>
       </div>
+      
+      {isIconPickerOpen && (
+        <IconPickerModal
+          initialIconUrl={iconUrl}
+          onClose={() => setIsIconPickerOpen(false)}
+          onSelect={(url) => {
+            setIconUrl(url);
+            setIsIconPickerOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };
