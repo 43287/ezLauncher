@@ -5,7 +5,8 @@ import { tauriApi } from "../api/tauri";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useContextMenuStore } from "../store/useContextMenuStore";
-import { useAppStore } from "../store/useAppStore";
+import { useDataStore } from "../store/useDataStore";
+import { useUIStore } from "../store/useUIStore";
 import { useModalStore } from "../store/useModalStore";
 import { resolveIcon } from "../utils/icons";
 
@@ -50,15 +51,9 @@ export const buildLaunchContext = (app: LaunchItem, dropPaths?: string[]) => {
     }
   }
 
-  // 智能解析带引号的参数
-  const argsArray: string[] = [];
-  if (finalArgsStr) {
-    const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
-    let match;
-    while ((match = regex.exec(finalArgsStr)) !== null) {
-      argsArray.push(match[1] || match[2] || match[0]);
-    }
-  }
+  // 由于后端已经引入了 shell-words 解析器，我们不再在前端使用容易出错的正则表达式拆分。
+  // 直接将整个宏替换后的字符串作为单一元素数组传给后端，后端检测到长度为 1 时会自动解析。
+  const argsArray: string[] = finalArgsStr.trim() ? [finalArgsStr.trim()] : [];
 
   // 3. 处理 cwd 宏替换
   let finalCwd = app.cwd || undefined;
@@ -87,8 +82,10 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
   const [isEditingSeparator, setIsEditingSeparator] = useState(false);
   const [separatorName, setSeparatorName] = useState(app.name);
   const openMenu = useContextMenuStore((state) => state.openMenu);
-  const { removeApp, updateApp } = useAppStore();
+  const { removeApp, updateApp } = useDataStore();
   const openEditApp = useModalStore((state) => state.openEditApp);
+  const focusedAppId = useUIStore((state) => state.focusedAppId);
+  const isKeyboardFocused = focusedAppId === app.id;
 
   const {
     attributes,
@@ -108,9 +105,9 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
     zIndex: isDragging ? 1 : 0,
   };
 
-  const handleLaunch = async (e: React.MouseEvent) => {
+  const handleLaunch = async (e?: React.MouseEvent, forceAdmin?: boolean) => {
     if (app.type === 'separator') return;
-    const runAsAdmin = e.shiftKey || app.runAsAdmin || false;
+    const runAsAdmin = forceAdmin || (e ? e.shiftKey : false) || app.runAsAdmin || false;
     try {
       // 启动前先隐藏窗口，提升响应速度体验
       await tauriApi.hideWindow();
@@ -168,9 +165,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
         label: "以管理员启动",
         onClick: (ev: React.MouseEvent) => {
           ev.stopPropagation();
-          // Simulate Shift+Click to run as admin
-          const pseudoEvent = { ...ev, shiftKey: true } as React.MouseEvent;
-          handleLaunch(pseudoEvent);
+          handleLaunch(undefined, true);
         }
       });
 
@@ -234,7 +229,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
             isDragging ? '' : 'transition-all duration-300 apple-ease'
           } ${
             isHovered ? 'bg-blue-50/50 dark:bg-blue-900/30 ring-1 ring-blue-400' : ''
-          }`}
+          } ${isKeyboardFocused ? 'ring-2 ring-blue-500 ring-offset-1 bg-black/5 dark:bg-white/10' : ''}`}
         >
           <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
           <div className="px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
@@ -270,31 +265,31 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
           data-app-id={app.id}
           onDoubleClick={handleLaunch}
           onContextMenu={handleContextMenu}
-          className={`aspect-square w-full max-w-[90px] flex flex-col items-center justify-center p-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 cursor-grab active:cursor-grabbing active:scale-95 ${
+          className={`aspect-square w-full max-w-[80px] flex flex-col items-center justify-center p-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 cursor-grab active:cursor-grabbing active:scale-95 ${
             isDragging ? '' : 'transition-all duration-300 apple-ease'
           } ${
             isHovered 
               ? 'bg-blue-50/50 dark:bg-blue-900/30 ring-1 ring-blue-400 shadow-soft' // Lighter highlight for drag-to-item
               : 'hover:bg-black/5 dark:hover:bg-white/10'
-          }`}
+          } ${isKeyboardFocused ? 'ring-2 ring-blue-500 ring-offset-2 bg-black/5 dark:bg-white/10 shadow-soft' : ''}`}
         >
           {resolvedIcon?.type === 'lucide' ? (
-            <div className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none flex items-center justify-center text-gray-800 dark:text-gray-200">
+            <div className="w-10 h-10 mb-0.5 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none flex items-center justify-center text-gray-800 dark:text-gray-200">
               {React.createElement((LucideIcons as any)[resolvedIcon.content] || LucideIcons.HelpCircle, { size: '100%', strokeWidth: 1.5 })}
             </div>
           ) : resolvedIcon?.type === 'svg' ? (
             <div 
-              className={`w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none flex items-center justify-center [&>svg]:w-full [&>svg]:h-full ${app.isDir ? 'drop-shadow-sm' : ''}`}
+              className={`w-10 h-10 mb-0.5 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none flex items-center justify-center [&>svg]:w-full [&>svg]:h-full ${app.isDir ? 'drop-shadow-sm' : ''}`}
               dangerouslySetInnerHTML={{ __html: resolvedIcon.content }}
             />
           ) : resolvedIcon?.type === 'url' ? (
             <img
               src={resolvedIcon.content}
               alt={`${app.name} icon`}
-              className="w-12 h-12 mb-2 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
+              className="w-10 h-10 mb-0.5 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none"
             />
           ) : (
-            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-lg flex items-center justify-center text-xl font-bold mb-2 shadow-sm pointer-events-none">
+            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-lg flex items-center justify-center text-xl font-bold mb-0.5 shadow-sm pointer-events-none">
               {app.name.charAt(0).toUpperCase()}
             </div>
           )}

@@ -25,4 +25,7 @@ pub enum ServiceError {
 
     #[error("Crypto error: {0}")]
     Crypto(String),
+
+    #[error("Parse error: {0}")]
+    Parse(String),
 }

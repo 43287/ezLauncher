@@ -33,11 +33,13 @@ uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
 thiserror = "2.0.18"
 dashmap = "6.2.1"
 tauri-plugin-autostart = "2"
-rdev = "0.5.3"
+rdev = { version = "0.5.3", features = ["unstable_grab"] }
 open = "5.3.5"
 image = "0.24.9"
-tokio = { version = "1.52.3", features = ["fs", "rt", "rt-multi-thread"] }
+tokio = { version = "1.52.3", features = ["fs", "rt", "rt-multi-thread", "time"] }
 tauri-plugin-dialog = "2.7.1"
+shell-words = "1.1.1"
+ts-rs = "10.1.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58.0", features = [

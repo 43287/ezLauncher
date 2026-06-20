@@ -3,7 +3,8 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { tauriApi } from "../api/tauri";
-import { useAppStore } from "../store/useAppStore";
+import { useDataStore } from "../store/useDataStore";
+import { useUIStore } from "../store/useUIStore";
 import { LaunchItem } from "../types";
 
 export function cn(...inputs: ClassValue[]) {
@@ -27,7 +28,9 @@ export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
-  const { addApp, activeLeftTab, activeTopTab } = useAppStore();
+  const addApp = useDataStore((state) => state.addApp);
+  const activeLeftTab = useUIStore((state) => state.activeLeftTab);
+  const activeTopTab = useUIStore((state) => state.activeTopTab);
 
   useEffect(() => {
     setIsVisible(true);

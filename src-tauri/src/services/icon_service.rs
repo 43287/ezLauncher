@@ -48,7 +48,7 @@ pub async fn copy_custom_icon(src_path: String) -> Result<String, String> {
     let file_name = format!("{}.{}", timestamp, ext);
     let dest_path = custom_dir.join(&file_name);
     
-    std::fs::copy(&path, &dest_path).map_err(|e| e.to_string())?;
+    std::fs::copy(path, &dest_path).map_err(|e| e.to_string())?;
     
     Ok(format!("ezicon://custom/{}", file_name))
 }
@@ -131,7 +131,7 @@ fn extract_icon_sync(decoded_path: &str) -> Result<Vec<u8>, crate::services::err
         let index = shfi.iIcon;
         unsafe {
             if let Ok(image_list) = SHGetImageList::<IImageList>(SHIL_EXTRALARGE as i32) {
-                if let Ok(hicon) = image_list.GetIcon(index, ILD_TRANSPARENT.0 as u32) {
+                if let Ok(hicon) = image_list.GetIcon(index, ILD_TRANSPARENT.0) {
                     if !hicon.is_invalid() {
                         let res = hicon_to_png(hicon);
                         let _ = DestroyIcon(hicon);
@@ -261,7 +261,7 @@ fn hicon_to_png(hicon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Result
 
         let mut png_data = Vec::new();
         let encoder = PngEncoder::new(&mut png_data);
-        if let Err(e) = image::ImageEncoder::write_image(encoder, &pixels, width as u32, height as u32, ColorType::Rgba8.into()) {
+        if let Err(e) = image::ImageEncoder::write_image(encoder, &pixels, width as u32, height as u32, ColorType::Rgba8) {
             return Err(format!("Failed to encode PNG: {}", e));
         }
 

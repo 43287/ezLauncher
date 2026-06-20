@@ -1,5 +1,6 @@
 import { useModalStore } from "../store/useModalStore";
-import { useAppStore } from "../store/useAppStore";
+import { useDataStore } from "../store/useDataStore";
+import { useUIStore } from "../store/useUIStore";
 import { SettingsWindow } from "./SettingsWindow";
 import { PropertiesModal } from "./PropertiesModal";
 import { SystemAppModal } from "./SystemAppModal";
@@ -17,7 +18,10 @@ export function AppModals() {
     closeSystemApp,
   } = useModalStore();
 
-  const { updateApp, addApp, activeLeftTab, activeTopTab } = useAppStore();
+  const updateApp = useDataStore((state) => state.updateApp);
+  const addApp = useDataStore((state) => state.addApp);
+  const activeLeftTab = useUIStore((state) => state.activeLeftTab);
+  const activeTopTab = useUIStore((state) => state.activeTopTab);
 
   return (
     <>

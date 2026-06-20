@@ -12,6 +12,25 @@ export const tauriApi = {
     return invoke<void>("save_settings", { portable, settingsJson });
   },
 
+  loadApps: async (portable: boolean): Promise<string> => {
+    return invoke<string>("load_apps", { portable });
+  },
+
+  saveApps: async (
+    portable: boolean,
+    appsJson: string,
+  ): Promise<void> => {
+    return invoke<void>("save_apps", { portable, appsJson });
+  },
+
+  restoreFromBackup: async (portable: boolean): Promise<void> => {
+    return invoke<void>("restore_from_backup", { portable });
+  },
+
+  updateWindowWidth: async (width: number, isLeftDock: boolean): Promise<void> => {
+    return invoke<void>("update_window_width", { width, isLeftDock });
+  },
+
   launchApp: async (
     executablePath: string,
     args: string[],

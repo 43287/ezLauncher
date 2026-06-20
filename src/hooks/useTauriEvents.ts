@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react';
 import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { tauriApi } from "../api/tauri";
-import { FORCE_HIDE_ANIMATION, FORCE_SHOW_ANIMATION } from "../constants/events";
-import { useAppStore } from '../store/useAppStore';
+import { FORCE_HIDE_ANIMATION, FORCE_SHOW_ANIMATION, TOGGLE_VISIBILITY } from "../constants/events";
+import { useUIStore } from '../store/useUIStore';
 
-export function useTauriEvents(setIsVisible: (visible: boolean) => void, summonShortcut: string) {
+export function useTauriEvents(setIsVisible: React.Dispatch<React.SetStateAction<boolean>>, _isVisible: boolean, summonShortcut?: string, summonMouseShortcut?: string) {
   useEffect(() => {
     let unlisteners: (() => void)[] = [];
     let isMounted = true;
@@ -18,10 +18,13 @@ export function useTauriEvents(setIsVisible: (visible: boolean) => void, summonS
         if (monitor) {
           const scaleFactor = monitor.scaleFactor;
           const monitorWidth = monitor.size.width / scaleFactor;
-          const logicalWidth = Math.min(400, monitorWidth); // 抽屉宽度响应式
+          // Dynamically compute width to be around 25% of the monitor width, clamped to a reasonable minimum
+          const logicalWidth = Math.max(380, Math.min(monitorWidth * 0.25, 800));
           const logicalHeight = monitor.size.height / scaleFactor;
 
-          // 吸附在屏幕右侧，占据全高
+          // 吸附在屏幕右侧或左侧，占据全高
+          // 我们这里可以暂时先设置为 right，真正的动态位置交给 App.tsx 的 updateWindowWidth 即可
+          // 因为这里拿不到 settings（或者拿到了也可能有延迟），所以使用一个初始值
           const xPos = monitorWidth - logicalWidth;
           const yPos = 0;
 
@@ -39,6 +42,20 @@ export function useTauriEvents(setIsVisible: (visible: boolean) => void, summonS
           setIsVisible(false);
         });
         if (isMounted) unlisteners.push(unlistenHide); else unlistenHide();
+        
+        // 监听来自后端的 Toggle 事件（脱离底层查询）
+        const unlistenToggle = await listen(TOGGLE_VISIBILITY, () => {
+          setIsVisible((prev) => {
+            if (prev) {
+              tauriApi.hideWindow();
+              return false;
+            } else {
+              return true;
+            }
+          });
+        });
+        if (isMounted) unlisteners.push(unlistenToggle); else unlistenToggle();
+
       } catch (error) {
         console.error("Failed to setup Tauri window and events:", error);
       }
@@ -54,7 +71,7 @@ export function useTauriEvents(setIsVisible: (visible: boolean) => void, summonS
 
   // 全局快捷键注册与处理
   const currentShortcutRef = useRef<string | null>(null);
-  const isRecordingShortcut = useAppStore(state => state.isRecordingShortcut);
+  const isRecordingShortcut = useUIStore(state => state.isRecordingShortcut);
 
   useEffect(() => {
     let isActive = true;
@@ -81,10 +98,18 @@ export function useTauriEvents(setIsVisible: (visible: boolean) => void, summonS
         if (!isActive) return;
 
         // 注册新快捷键
-        await tauriApi.registerShortcut(summonShortcut);
+        const finalSummonShortcut = summonShortcut || 'Alt+Space';
+        const finalSummonMouseShortcut = summonMouseShortcut || 'Mouse4';
+
+        if (finalSummonShortcut) {
+          await tauriApi.registerShortcut(finalSummonShortcut);
+        }
+        if (finalSummonMouseShortcut) {
+          await tauriApi.registerShortcut(finalSummonMouseShortcut);
+        }
         
         if (isActive) {
-          currentShortcutRef.current = summonShortcut;
+          currentShortcutRef.current = `${finalSummonShortcut}|${finalSummonMouseShortcut}`;
         } else {
           // 如果注册完成后发现组件已经卸载/依赖已变，就立刻注销刚才注册的
           await tauriApi.unregisterAllShortcuts();
@@ -105,5 +130,5 @@ export function useTauriEvents(setIsVisible: (visible: boolean) => void, summonS
         currentShortcutRef.current = null;
       }
     };
-  }, [summonShortcut, isRecordingShortcut]);
+  }, [summonShortcut, summonMouseShortcut, isRecordingShortcut]);
 }

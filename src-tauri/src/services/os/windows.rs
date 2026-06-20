@@ -2,7 +2,7 @@ use std::process::Command;
 use std::os::windows::process::CommandExt;
 use std::fs;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
@@ -16,12 +16,12 @@ pub struct SystemApp {
     pub icon_url: String,
 }
 
-fn system_apps_cache() -> &'static DashMap<String, Vec<SystemApp>> {
-    static CACHE: OnceLock<DashMap<String, Vec<SystemApp>>> = OnceLock::new();
+fn system_apps_cache() -> &'static DashMap<String, Arc<Vec<SystemApp>>> {
+    static CACHE: OnceLock<DashMap<String, Arc<Vec<SystemApp>>>> = OnceLock::new();
     CACHE.get_or_init(DashMap::new)
 }
 
-pub fn scan_system_apps() -> Result<Vec<SystemApp>, ServiceError> {
+pub fn scan_system_apps() -> Result<Arc<Vec<SystemApp>>, ServiceError> {
     let cache_key = "system32_apps".to_string();
     let cache = system_apps_cache();
     
@@ -36,7 +36,7 @@ pub fn scan_system_apps() -> Result<Vec<SystemApp>, ServiceError> {
     }
 
     let mut apps = Vec::new();
-    let entries = fs::read_dir(path).map_err(|e| ServiceError::Internal(e.to_string()))?;
+    let entries = fs::read_dir(path).map_err(ServiceError::Io)?;
     
     for entry in entries.filter_map(Result::ok) {
         let file_path = entry.path();
@@ -48,7 +48,10 @@ pub fn scan_system_apps() -> Result<Vec<SystemApp>, ServiceError> {
                         let path_str = file_path.to_string_lossy().to_string();
                         
                         // 预解析图标以缓存
-                        let _ = crate::services::icon_service::get_icon_data(&path_str);
+                        let path_str_clone = path_str.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = crate::services::icon_service::get_icon_data(&path_str_clone).await;
+                        });
                         
                         let icon_url = path_str.clone();
                         
@@ -66,8 +69,9 @@ pub fn scan_system_apps() -> Result<Vec<SystemApp>, ServiceError> {
     // 按名称排序以提供一致的结果
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     
-    cache.insert(cache_key, apps.clone());
-    Ok(apps)
+    let result = Arc::new(apps);
+    cache.insert(cache_key, result.clone());
+    Ok(result)
 }
 
 const DETACHED_PROCESS: u32 = 0x00000008;
@@ -104,11 +108,28 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, cwd:
         }
     }
 
-    let args_clone = args.clone();
+    // Use shell-words if args is provided as a single string inside the Vec
+    let parsed_args = if let Some(args_vec) = args {
+        if args_vec.len() == 1 {
+            match shell_words::split(&args_vec[0]) {
+                Ok(parsed) => Some(parsed),
+                Err(e) => {
+                    tracing::error!("Failed to parse arguments: {}", e);
+                    return Err(ServiceError::Launch(format!("Failed to parse arguments: {}", e)));
+                }
+            }
+        } else {
+            Some(args_vec)
+        }
+    } else {
+        None
+    };
+
+    let args_clone = parsed_args.clone();
     let cwd_clone = cwd.clone();
 
     let mut cmd = Command::new(executable_path);
-    if let Some(args_vec) = args {
+    if let Some(args_vec) = parsed_args {
         cmd.args(args_vec);
     }
     if let Some(working_dir) = cwd {
@@ -184,7 +205,7 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, cwd:
 pub fn relaunch_as_admin() -> Result<(), ServiceError> {
     #[cfg(debug_assertions)]
     {
-        return Err(ServiceError::Internal("在开发模式下不支持以管理员身份重启，因为这会导致前端开发服务器断开连接。请在打包后使用此功能。".to_string()));
+        Err(ServiceError::Internal("在开发模式下不支持以管理员身份重启，因为这会导致前端开发服务器断开连接。请在打包后使用此功能。".to_string()))
     }
 
     #[cfg(all(not(debug_assertions), target_os = "windows"))]

@@ -1,11 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { AppGrid } from "./components/AppGrid";
-import { LaunchItem, Tab } from "./types";
 import { CustomTitlebar } from "./components/CustomTitlebar";
-import { useSettings } from "./hooks/useSettings";
-import { useStoreSync } from "./hooks/useStoreSync";
-import { useAppStore } from "./store/useAppStore";
-import { useContextMenuStore } from "./store/useContextMenuStore";
+import { useDataStore } from "./store/useDataStore";
+import { useUIStore } from "./store/useUIStore";
 import { useModalStore } from "./store/useModalStore";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
@@ -13,202 +10,167 @@ import { GlobalContextMenu } from "./components/layout/GlobalContextMenu";
 import { AppModals } from "./components/AppModals";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useWheelNavigation } from "./hooks/useWheelNavigation";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragStartEvent,
-  DragOverEvent,
-  DragEndEvent,
-  DragCancelEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { useGlobalContextMenu } from "./hooks/useGlobalContextMenu";
+import { DragDropProvider } from "./components/providers/DragDropProvider";
+import { tauriApi } from "./api/tauri";
 import "./App.css";
 
 function App() {
-  const { settings, updateSetting, isLoaded } = useSettings();
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const { settings, setSettings, setApps, isLoaded, setIsLoaded } = useDataStore();
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState("");
 
-  const setApps = useAppStore((state) => state.setApps);
-  const leftTabs = useAppStore((state) => state.leftTabs);
-  const setLeftTabs = useAppStore((state) => state.setLeftTabs);
-  const topTabs = useAppStore((state) => state.topTabs);
-  const setTopTabs = useAppStore((state) => state.setTopTabs);
-  const activeLeftTab = useAppStore((state) => state.activeLeftTab);
-  const setActiveLeftTab = useAppStore((state) => state.setActiveLeftTab);
-  const activeTopTab = useAppStore((state) => state.activeTopTab);
-  const setActiveTopTab = useAppStore((state) => state.setActiveTopTab);
-  const addApp = useAppStore((state) => state.addApp);
+  const activeLeftTab = useUIStore((state) => state.activeLeftTab);
+  const setActiveLeftTab = useUIStore((state) => state.setActiveLeftTab);
+  const activeTopTab = useUIStore((state) => state.activeTopTab);
+  const setActiveTopTab = useUIStore((state) => state.setActiveTopTab);
 
-  const { openMenu } = useContextMenuStore();
   const { 
-    openAddApp, 
-    openSystemApp,
     isSettingsOpen,
     editingApp,
     isAddingApp,
     isSystemAppOpen
   } = useModalStore();
 
-  const isAnyModalOpen = isSettingsOpen || editingApp !== null || isAddingApp || isSystemAppOpen;
+  const { handleContextMenu } = useGlobalContextMenu();
+
+  const isAnyModalOpen = isSettingsOpen || editingApp !== null || isAddingApp || isSystemAppOpen || showRecovery;
 
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    if (isLoaded && !hasInitialized) {
-      if (settings.apps) setApps(settings.apps as unknown as LaunchItem[]);
-      if (settings.leftTabs) setLeftTabs(settings.leftTabs as unknown as Tab[]);
-      if (settings.topTabs) {
-        if (Array.isArray(settings.topTabs)) {
-          // migrate array to dictionary based on current activeLeftTab (or default '2' if not available)
-          const currentLeftTab = (settings.activeLeftTab as string) || activeLeftTab || '2';
-          setTopTabs({ [currentLeftTab]: settings.topTabs as unknown as Tab[] });
+    let isMounted = true;
+    
+    async function initializeStore() {
+      if (isLoaded || showRecovery) return;
+      
+      try {
+        const portableFlag = localStorage.getItem('portable_mode') !== 'false';
+        
+        // 1. 尝试加载并解析 Settings
+        const settingsJsonStr = await tauriApi.loadSettings(portableFlag);
+        const parsedSettings = JSON.parse(settingsJsonStr);
+        // 通过 useDataStore 的默认合并机制自动兼容新增字段
+        if (isMounted) setSettings({ ...settings, ...parsedSettings });
+
+        // 2. 尝试加载并解析 Apps
+        const appsJsonStr = await tauriApi.loadApps(portableFlag);
+        const parsedApps = JSON.parse(appsJsonStr);
+        if (isMounted) setApps(parsedApps);
+
+        if (isMounted) setIsLoaded(true);
+      } catch (err: any) {
+        console.error('Initialization failed:', err);
+        if (err.toString().includes('ParseError') || err.toString().includes('PARSE_ERROR') || err.toString().includes('SyntaxError')) {
+          if (isMounted) {
+            setRecoveryMessage(err.toString());
+            setShowRecovery(true);
+          }
         } else {
-          setTopTabs(settings.topTabs as unknown as Record<string, Tab[]>);
+          // 非解析错误（可能只是初始空文件），放行
+          if (isMounted) setIsLoaded(true);
         }
       }
-      setHasInitialized(true);
     }
-  }, [isLoaded, hasInitialized, settings, setApps, setLeftTabs, setTopTabs, activeLeftTab]);
 
-  useStoreSync(updateSetting, hasInitialized);
+    initializeStore();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  useTauriEvents(setIsVisible, (settings.summonShortcut as string) || 'Alt+Space');
+  const handleRestoreBackup = async () => {
+    try {
+      const portableFlag = localStorage.getItem('portable_mode') !== 'false';
+      await tauriApi.restoreFromBackup(portableFlag);
+      window.location.reload(); // 重载页面以重新触发初始化流程
+    } catch (err) {
+      alert("恢复失败：" + err);
+    }
+  };
+
+  useTauriEvents(setIsVisible, isVisible, settings.summonShortcut, settings.summonMouseShortcut);
+  useGlobalShortcuts(isVisible);
+
+  // 根据 dockPosition 决定 flex 的排列方向
+  const isLeftDock = settings.dockPosition === 'left';
+  const flexDirectionClass = isLeftDock ? "flex-row-reverse" : "flex-row";
+  
+  // 根据 dockPosition 决定动画的滑入滑出方向
+  const translateClass = isVisible 
+    ? "translate-x-0" 
+    : (isLeftDock ? "-translate-x-full" : "translate-x-full");
+
+  // 根据列数动态计算宽度
+  const columns = settings.columns || 4;
+  // 精确计算紧凑模式：
+  // 每个 ShortcutItem 的最大宽度调整为 80px (w-full max-w-[80px])
+  // 网格 gap 保持 1 (0.25rem = 4px)
+  // columns 个格子需要 columns * 80 的宽度
+  // (columns - 1) 个 gap 需要 (columns - 1) * 4 的宽度
+  // AppGrid 容器的 padding 缩小为 p-2 (0.5rem = 8px)，左右总共 16px
+  // 加上 Sidebar 约 56px (w-14)
+  // 再加上 16px 专门用于预留 Windows 纵向滚动条的宽度，防止内容溢出
+  const gridContainerWidth = (columns * 80) + ((columns - 1) * 4) + 16 + 16;
+  const totalWindowWidth = gridContainerWidth + 56; // 主内容 + Sidebar
+
+  useEffect(() => {
+    if (isLoaded) {
+      tauriApi.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch(console.error);
+    }
+  }, [isLoaded, totalWindowWidth, settings.dockPosition]);
+
+  // 当窗口首次可见时，确保调用一次 updateWindowWidth 来调整到最新设置的位置
+  useEffect(() => {
+    if (isVisible && isLoaded) {
+        tauriApi.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch(console.error);
+    }
+  }, [isVisible, isLoaded]);
 
   const { handleWheel } = useWheelNavigation(
     isAnyModalOpen,
-    topTabs[activeLeftTab] || [],
+    (settings.topTabs || {})[activeLeftTab] || [],
     activeTopTab,
     setActiveTopTab,
-    leftTabs,
+    settings.leftTabs || [],
     activeLeftTab,
     setActiveLeftTab,
   );
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  if (showRecovery) {
+    return (
+      <div className="h-screen w-screen bg-gray-900 text-white flex flex-col items-center justify-center p-8 text-center" data-tauri-drag-region>
+        <div className="bg-red-500/20 border border-red-500 p-6 rounded-xl max-w-lg shadow-2xl z-50">
+          <h1 className="text-2xl font-bold mb-4 flex items-center justify-center gap-2">
+            <span>⚠️</span> 配置文件损坏
+          </h1>
+          <p className="text-red-200 mb-2">系统在加载您的配置文件时遇到了无法解析的错误。为了防止您的原始数据被错误覆盖，系统已安全阻断启动。</p>
+          <div className="bg-black/40 p-3 rounded text-left text-xs font-mono text-red-300 mb-6 overflow-x-auto">
+            {recoveryMessage}
+          </div>
+          <div className="flex gap-4 justify-center">
+            <button 
+              onClick={handleRestoreBackup}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-medium transition-colors"
+            >
+              从备份恢复 (Restore from Backup)
+            </button>
+            <button 
+              onClick={() => window.location.reload()}
+              className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded font-medium transition-colors"
+            >
+              重试加载 (Retry)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const originalApps = useRef<LaunchItem[]>([]);
-  const originalLeftTabs = useRef<Tab[]>([]);
-
-  const handleDragStart = useCallback((_event: DragStartEvent) => {
-    originalApps.current = useAppStore.getState().apps;
-    originalLeftTabs.current = useAppStore.getState().leftTabs;
-  }, []);
-
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
-
-    if (activeId.startsWith('item-')) {
-      const appId = activeId.replace('item-', '');
-      const appIndex = useAppStore.getState().apps.findIndex(a => a.id === appId);
-      if (appIndex === -1) return;
-
-      if (overId.startsWith('leftTab-')) {
-        const targetTabId = overId.replace('leftTab-', '');
-        if (targetTabId !== activeLeftTab) {
-          setActiveLeftTab(targetTabId);
-          // 移动该 app 到新的分类，使其保持挂载状态
-          setApps((prev) => {
-            const newApps = [...prev];
-            const app = { ...newApps[appIndex], categoryId: targetTabId };
-            // 如果新分类下没有该 column，可能需要重置为第一个或者默认的
-            const targetTopTabs = topTabs[targetTabId] || [];
-            if (targetTopTabs.length > 0 && !targetTopTabs.some(t => t.id === app.columnId)) {
-              app.columnId = targetTopTabs[0].id;
-              setActiveTopTab(app.columnId);
-            }
-            newApps[appIndex] = app;
-            return newApps;
-          });
-        }
-      } else if (overId.startsWith('topTab-')) {
-        const targetTopTabId = overId.replace('topTab-', '');
-        if (targetTopTabId !== activeTopTab) {
-          setActiveTopTab(targetTopTabId);
-          setApps((prev) => {
-            const newApps = [...prev];
-            newApps[appIndex] = { ...newApps[appIndex], columnId: targetTopTabId };
-            return newApps;
-          });
-        }
-      }
-    }
-  }, [activeLeftTab, activeTopTab, setActiveLeftTab, setActiveTopTab, setApps, topTabs]);
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
-
-    if (activeId.startsWith('item-')) {
-      const activeAppId = activeId.replace('item-', '');
-      
-      // Get the final current apps in current tab
-      const currentApps = useAppStore.getState().apps;
-      const filteredApps = currentApps.filter(
-        app => app.categoryId === activeLeftTab && app.columnId === activeTopTab
-      );
-      
-      let newFilteredApps = [...filteredApps];
-      
-      if (overId.startsWith('item-')) {
-        const overAppId = overId.replace('item-', '');
-        const oldIndex = filteredApps.findIndex(app => app.id === activeAppId);
-        const newIndex = filteredApps.findIndex(app => app.id === overAppId);
-        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-          newFilteredApps = arrayMove(filteredApps, oldIndex, newIndex);
-        }
-      } else if (overId.startsWith('leftTab-') || overId.startsWith('topTab-')) {
-        // Drag over a tab finishes. The item is already moved in onDragOver and placed at the end of the filtered list.
-        // We just need to ensure it's saved. No arrayMove needed unless we want to put it at a specific index.
-      }
-
-      setApps((prev) => {
-        const otherApps = prev.filter(
-          app => app.categoryId !== activeLeftTab || app.columnId !== activeTopTab
-        );
-        return [...otherApps, ...newFilteredApps];
-      });
-
-    } else if (activeId.startsWith('leftTab-') && overId.startsWith('leftTab-')) {
-      const activeTabId = activeId.replace('leftTab-', '');
-      const overTabId = overId.replace('leftTab-', '');
-      
-      if (activeTabId !== overTabId) {
-        setLeftTabs((items) => {
-          const oldIndex = items.findIndex(t => t.id === activeTabId);
-          const newIndex = items.findIndex(t => t.id === overTabId);
-          return arrayMove(items, oldIndex, newIndex);
-        });
-      }
-    }
-  }, [activeLeftTab, activeTopTab, setApps, setLeftTabs]);
-
-  const handleDragCancel = useCallback((_event: DragCancelEvent) => {
-    setApps(originalApps.current);
-    setLeftTabs(originalLeftTabs.current);
-  }, [setApps, setLeftTabs]);
+  // 渲染正常的 App 内容 (如果尚未加载，可以选择渲染骨架屏，此处暂时保持透明等待)
+  if (!isLoaded) return <div className="h-screen w-screen bg-transparent" data-tauri-drag-region />;
 
   return (
     <div
@@ -216,83 +178,31 @@ function App() {
       onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
-      >
+      <DragDropProvider>
         <div
-        className={`flex flex-col h-full bg-white/90 dark:bg-gray-900/80 backdrop-blur-xl shadow-soft-lg transition-transform duration-300 ease-in-out ${
-          isVisible ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        <CustomTitlebar />
-        <div className="flex flex-1 overflow-hidden" data-tauri-drag-region>
-          <main
-            className="flex-1 flex flex-col bg-transparent"
-            data-tauri-drag-region
-          >
-            <TopBar />
-
-            <div
-              className="flex-1 p-4 overflow-y-auto text-gray-900 dark:text-gray-100 relative h-full w-full"
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const x = Math.min(e.clientX, window.innerWidth - 100);
-                const y = Math.min(e.clientY, window.innerHeight - 200);
-                openMenu(
-                  [
-                    {
-                      label: "添加",
-                      children: [
-                        {
-                          label: "可执行程序",
-                          onClick: () => openAddApp("app"),
-                        },
-                        {
-                          label: "网页链接",
-                          onClick: () => openAddApp("link"),
-                        },
-                        { label: "系统程序", onClick: () => openSystemApp() },
-                        { label: "脚本", onClick: () => openAddApp("script") },
-                        {
-                          label: "命令",
-                          onClick: () => openAddApp("command"),
-                        },
-                      ],
-                    },
-                    {
-                      label: "添加分隔符",
-                      onClick: () => {
-                        const newApp: LaunchItem = {
-                          id: Date.now().toString(),
-                          name: "分隔符",
-                          type: "separator",
-                          shortcut: null,
-                          categoryId: activeLeftTab,
-                          columnId: activeTopTab,
-                        };
-                        addApp(newApp);
-                      },
-                    },
-                  ],
-                  x,
-                  y,
-                );
-              }}
+          className={`flex flex-col h-full bg-white/90 dark:bg-gray-900/80 backdrop-blur-xl shadow-soft-lg transition-transform duration-300 ease-in-out ${translateClass}`}
+        >
+          <CustomTitlebar />
+          <div className={`flex flex-1 overflow-hidden ${flexDirectionClass}`} data-tauri-drag-region>
+            <main
+              className="flex-1 flex flex-col bg-transparent"
+              style={{ width: `${gridContainerWidth}px` }}
+              data-tauri-drag-region
             >
-              <AppGrid />
-            </div>
-          </main>
+              <TopBar />
 
-          <Sidebar />
+              <div
+                className="flex-1 p-2 overflow-y-auto overflow-x-hidden text-gray-900 dark:text-gray-100 relative h-full w-full"
+                onContextMenu={handleContextMenu}
+              >
+                <AppGrid />
+              </div>
+            </main>
+
+            <Sidebar />
+          </div>
         </div>
-      </div>
-      </DndContext>
+      </DragDropProvider>
 
       <AppModals />
       <GlobalContextMenu />

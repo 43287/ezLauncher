@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useUIStore } from '../store/useUIStore';
 
 interface ShortcutCatcherProps {
     value: string;
@@ -12,7 +12,7 @@ export const ShortcutCatcher: React.FC<ShortcutCatcherProps> = ({ value, onChang
     const [tempValue, setTempValue] = useState('');
     const [resetting, setResetting] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
-    const setIsRecordingShortcut = useAppStore(state => state.setIsRecordingShortcut);
+    const setIsRecordingShortcut = useUIStore(state => state.setIsRecordingShortcut);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (!recording) return;
@@ -41,10 +41,19 @@ export const ShortcutCatcher: React.FC<ShortcutCatcherProps> = ({ value, onChang
         
         if (!isModifier) {
             let primaryKey = key;
-            if (primaryKey === ' ') {
+            // 对于反斜杠等可能受到 Shift 影响的键，使用 e.code 会更稳定
+            // 能够有效绕过系统输入法拦截和中英文符号差异
+            if (e.code === 'Backslash') {
+                primaryKey = '\\';
+            } else if (primaryKey === ' ') {
                 primaryKey = 'Space';
             } else if (primaryKey.length === 1) {
-                primaryKey = primaryKey.toUpperCase();
+                // 如果是英文字母，直接通过 e.code 提取
+                if (e.code.startsWith('Key')) {
+                    primaryKey = e.code.replace('Key', '');
+                } else {
+                    primaryKey = primaryKey.toUpperCase();
+                }
             }
 
             const combo = [...modifiers, primaryKey].join('+');

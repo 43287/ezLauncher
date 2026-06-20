@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { useAppStore, Tab } from "../../store/useAppStore";
+import { useDataStore } from "../../store/useDataStore";
+import { useUIStore } from "../../store/useUIStore";
 import { useContextMenuStore } from "../../store/useContextMenuStore";
+import { Tab } from "../../types";
 
 function DroppableTopTab({ 
   tab, 
@@ -76,13 +78,15 @@ function DroppableTopTab({
 }
 
 export function TopBar() {
-  const { topTabs, setTopTabs, activeTopTab, setActiveTopTab, activeLeftTab } = useAppStore();
+  const { settings, updateSetting } = useDataStore();
+  const { activeTopTab, setActiveTopTab, activeLeftTab } = useUIStore();
   const { openMenu } = useContextMenuStore();
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
 
+  const topTabs = settings.topTabs || {};
   const currentTopTabs = topTabs[activeLeftTab] || [];
 
   useEffect(() => {
@@ -101,13 +105,12 @@ export function TopBar() {
   const saveTabName = () => {
     if (editingTabId) {
       if (editValue.trim() !== '') {
-        setTopTabs((prev: Record<string, Tab[]>) => {
-          const current = prev[activeLeftTab] || [];
-          return {
-            ...prev,
-            [activeLeftTab]: current.map(t => t.id === editingTabId ? { ...t, name: editValue.trim() } : t)
-          };
-        });
+        const current = topTabs[activeLeftTab] || [];
+        const newTabsMap = {
+          ...topTabs,
+          [activeLeftTab]: current.map((t: Tab) => t.id === editingTabId ? { ...t, name: editValue.trim() } : t)
+        };
+        updateSetting('topTabs', newTabsMap);
       }
     }
     setEditingTabId(null);
@@ -122,30 +125,20 @@ export function TopBar() {
   };
 
   const handleDeleteTab = (tabId: string) => {
-    setTopTabs((prev: Record<string, Tab[]>) => {
-      const current = prev[activeLeftTab] || [];
-      const newTabs = current.filter(t => t.id !== tabId);
-      if (activeTopTab === tabId) {
-        setActiveTopTab(newTabs.length > 0 ? newTabs[0].id : '');
-      }
-      return {
-        ...prev,
-        [activeLeftTab]: newTabs
-      };
-    });
+    const current = topTabs[activeLeftTab] || [];
+    const newTabs = current.filter((t: Tab) => t.id !== tabId);
+    if (activeTopTab === tabId) {
+      setActiveTopTab(newTabs.length > 0 ? newTabs[0].id : '');
+    }
+    const newTabsMap = {
+      ...topTabs,
+      [activeLeftTab]: newTabs
+    };
+    updateSetting('topTabs', newTabsMap);
   };
 
   const handleContainerDoubleClick = () => {
-    const newTabId = Date.now().toString();
-    const newTab = { id: newTabId, name: 'New' };
-    setTopTabs((prev: Record<string, Tab[]>) => {
-      const current = prev[activeLeftTab] || [];
-      return {
-        ...prev,
-        [activeLeftTab]: [...current, newTab]
-      };
-    });
-    setActiveTopTab(newTabId);
+    // 明确规定顶部标签页不能新建，且最多只有 4 个
   };
 
   const handleTabContextMenu = (e: React.MouseEvent, tab: Tab) => {

@@ -1,11 +1,15 @@
 use std::path::Path;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::services::error::ServiceError;
+use crate::services::os::windows::SystemApp;
 
 pub trait ExecutionServiceTrait: Send + Sync {
     fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool, cwd: Option<String>, envs: Option<HashMap<String, String>>) -> Result<(), ServiceError>;
-    fn extract_file_info(&self, file_path: String) -> Result<ExtractedFileInfo, ServiceError>;
+    fn extract_file_info(&self, file_path: &str) -> Result<ExtractedFileInfo, ServiceError>;
+    fn get_system_apps(&self) -> Result<Arc<Vec<SystemApp>>, ServiceError>;
+    fn relaunch_as_admin(&self) -> Result<(), ServiceError>;
 }
 
 pub struct ExecutionService;
@@ -38,12 +42,12 @@ impl ExecutionServiceTrait for ExecutionService {
         }
     }
 
-    fn extract_file_info(&self, file_path: String) -> Result<ExtractedFileInfo, ServiceError> {
+    fn extract_file_info(&self, file_path: &str) -> Result<ExtractedFileInfo, ServiceError> {
         if file_path.starts_with(r"\\") {
             return Err(ServiceError::Security("Network paths starting with \\\\ are not allowed for security reasons.".to_string()));
         }
 
-        let path = Path::new(&file_path);
+        let path = Path::new(file_path);
         
         // 提取文件名（不包含扩展名）
         let name = path.file_stem()
@@ -53,14 +57,22 @@ impl ExecutionServiceTrait for ExecutionService {
 
         let is_dir = path.is_dir();
         
-        let icon_url = Some(file_path.clone());
+        let icon_url = Some(file_path.to_string());
 
         Ok(ExtractedFileInfo {
             name,
-            path: file_path,
+            path: file_path.to_string(),
             icon_url,
             is_dir,
         })
+    }
+
+    fn get_system_apps(&self) -> Result<Arc<Vec<SystemApp>>, ServiceError> {
+        crate::services::os::windows::scan_system_apps()
+    }
+
+    fn relaunch_as_admin(&self) -> Result<(), ServiceError> {
+        crate::services::os::windows::relaunch_as_admin()
     }
 }
 

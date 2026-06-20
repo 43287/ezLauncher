@@ -1,5 +1,6 @@
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use thiserror::Error;
+use crate::services::error::ServiceError;
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -15,6 +16,9 @@ pub enum AppError {
     #[error("Execution Error: {0}")]
     Execution(String),
 
+    #[error("Service Error: {0}")]
+    Service(#[from] ServiceError),
+
     #[error("Other Error: {0}")]
     Other(String),
 }
@@ -22,10 +26,33 @@ pub enum AppError {
 impl Serialize for AppError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
-        // 简单地序列化为错误字符串，前端可以直接捕获并显示
-        serializer.serialize_str(&self.to_string())
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("AppError", 2)?;
+        
+        let code = match self {
+            AppError::Io(_) => "IO_ERROR",
+            AppError::Crypto(_) => "CRYPTO_ERROR",
+            AppError::Tauri(_) => "TAURI_ERROR",
+            AppError::Execution(_) => "EXECUTION_ERROR",
+            AppError::Service(ref se) => match se {
+                ServiceError::Io(_) => "IO_ERROR",
+                ServiceError::Serialization(_) => "SERIALIZATION_ERROR",
+                ServiceError::Security(_) => "SECURITY_VIOLATION",
+                ServiceError::Proxy(_) => "PROXY_ERROR",
+                ServiceError::Concurrency(_) => "CONCURRENCY_ERROR",
+                ServiceError::Crypto(_) => "CRYPTO_ERROR",
+                ServiceError::Launch(_) => "LAUNCH_ERROR",
+                ServiceError::Internal(_) => "INTERNAL_ERROR",
+                ServiceError::Parse(_) => "PARSE_ERROR",
+            },
+            AppError::Other(_) => "UNKNOWN_ERROR",
+        };
+
+        state.serialize_field("code", code)?;
+        state.serialize_field("message", &self.to_string())?;
+        state.end()
     }
 }
 

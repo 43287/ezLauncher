@@ -11,9 +11,8 @@ pub mod ui;
 pub fn trigger_hide_animation(window: &tauri::WebviewWindow) {
     let _ = window.emit(crate::application::events::FORCE_HIDE_ANIMATION, ());
     let win_clone = window.clone();
-    std::thread::spawn(move || {
-        // 等待前端 300ms 的 CSS 过渡动画完成，稍微加一点冗余时间避免闪烁
-        std::thread::sleep(std::time::Duration::from_millis(350));
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
         let _ = win_clone.hide();
     });
 }
@@ -26,6 +25,8 @@ pub fn trigger_show_animation(window: &tauri::WebviewWindow) {
 
 #[tauri::command]
 fn hide_window(window: tauri::WebviewWindow) {
+    // 也要同步更新 AtomicBool 状态，因为这是前端主动发起的隐藏（比如逃生舱或者失去焦点）
+    crate::services::hotkey_service::set_visible(false);
     trigger_hide_animation(&window);
 }
 
@@ -114,21 +115,23 @@ pub fn run() {
                 }
             });
         })
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![])))
         .invoke_handler(tauri::generate_handler![
-            application::commands::launch_app,
-            application::commands::extract_file_info,
-            application::commands::restart_as_admin,
-            application::commands::get_store_path,
-            application::commands::migrate_store_data,
-            application::commands::load_settings,
-            application::commands::save_settings,
-            application::commands::get_system_apps,
-            application::commands::register_shortcut,
-            application::commands::unregister_all_shortcuts,
+            application::commands::app_cmds::launch_app,
+            application::commands::app_cmds::extract_file_info,
+            application::commands::app_cmds::restart_as_admin,
+            application::commands::app_cmds::get_system_apps,
+            application::commands::app_cmds::update_window_width,
+            application::commands::store_cmds::get_store_path,
+            application::commands::store_cmds::migrate_store_data,
+            application::commands::store_cmds::load_settings,
+            application::commands::store_cmds::save_settings,
+            application::commands::store_cmds::load_apps,
+            application::commands::store_cmds::save_apps,
+            application::commands::store_cmds::restore_from_backup,
+            application::commands::hotkey_cmds::register_shortcut,
+            application::commands::hotkey_cmds::unregister_all_shortcuts,
             crate::services::icon_service::copy_custom_icon,
             hide_window
         ])

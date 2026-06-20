@@ -5,9 +5,11 @@ import {
   useSortable
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useAppStore, Tab } from "../../store/useAppStore";
+import { useDataStore } from "../../store/useDataStore";
+import { useUIStore } from "../../store/useUIStore";
 import { useContextMenuStore } from "../../store/useContextMenuStore";
 import { useModalStore } from "../../store/useModalStore";
+import { Tab } from "../../types";
 
 interface SortableTabProps {
   tab: Tab;
@@ -45,24 +47,29 @@ function SortableTab({
     isDragging,
   } = useSortable({ id: `leftTab-${tab.id}` });
 
+  // Use the sortable transition if available, otherwise apply a default smooth transition for entry
+  const baseTransition = transition || "transform 300ms cubic-bezier(0.25, 1, 0.5, 1), opacity 300ms ease";
+
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: baseTransition,
     zIndex: isDragging ? 10 : 1,
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // We wrap the sortable element in an outer div that handles the entrance animation independently
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
-      {...attributes} 
-      {...listeners}
-      className="w-10 h-10 flex items-center justify-center"
-      onContextMenu={(e) => onContextMenu(e, tab)}
-    >
-      {isEditing ? (
-        <input
+    <div className="animate-slide-down-fade">
+      <div 
+        ref={setNodeRef} 
+        style={style} 
+        {...attributes} 
+        {...listeners}
+        className="w-10 h-10 flex items-center justify-center"
+        onContextMenu={(e) => onContextMenu(e, tab)}
+      >
+        {isEditing ? (
+          <input
           ref={editInputRef as React.RefObject<HTMLInputElement>}
           type="text"
           value={editValue}
@@ -90,12 +97,15 @@ function SortableTab({
           <span className="text-xs font-medium">{tab.name.slice(0, 2)}</span>
         </button>
       )}
+      </div>
     </div>
   );
 }
 
 export function Sidebar() {
-  const { leftTabs, setLeftTabs, activeLeftTab, setActiveLeftTab, apps } = useAppStore();
+  const { apps, settings, updateSetting } = useDataStore();
+  const leftTabs = settings.leftTabs || [];
+  const { activeLeftTab, setActiveLeftTab } = useUIStore();
   const { openMenu } = useContextMenuStore();
   const { openSettings } = useModalStore();
   
@@ -119,7 +129,7 @@ export function Sidebar() {
   const saveTabName = () => {
     if (editingTabId) {
       if (editValue.trim() !== '') {
-        setLeftTabs((tabs: Tab[]) => tabs.map(t => t.id === editingTabId ? { ...t, name: editValue.trim() } : t));
+        updateSetting('leftTabs', leftTabs.map((t: Tab) => t.id === editingTabId ? { ...t, name: editValue.trim() } : t));
       }
     }
     setEditingTabId(null);
@@ -140,13 +150,11 @@ export function Sidebar() {
         return;
       }
     }
-    setLeftTabs((prev: Tab[]) => {
-      const newTabs = prev.filter(t => t.id !== tabId);
-      if (activeLeftTab === tabId && newTabs.length > 0) {
-        setActiveLeftTab(newTabs[0].id);
-      }
-      return newTabs;
-    });
+    const newTabs = leftTabs.filter((t: Tab) => t.id !== tabId);
+    if (activeLeftTab === tabId && newTabs.length > 0) {
+      setActiveLeftTab(newTabs[0].id);
+    }
+    updateSetting('leftTabs', newTabs);
   };
 
   const handleTabContextMenu = (e: React.MouseEvent, tab: Tab) => {
@@ -168,19 +176,14 @@ export function Sidebar() {
       aria-label="主要导航"
     >
       <div 
-        className="flex-1 w-full flex flex-col items-center overflow-y-auto gap-3" 
+        className="flex-1 w-full flex flex-col items-center overflow-y-auto gap-3 group" 
         data-tauri-drag-region
-        onDoubleClick={() => {
-          const newId = Date.now().toString();
-          setLeftTabs((prev: Tab[]) => [...prev, { id: newId, name: 'New' }]);
-          setActiveLeftTab(newId);
-        }}
       >
           <SortableContext
-            items={leftTabs.map(t => `leftTab-${t.id}`)}
+            items={leftTabs.map((t: Tab) => `leftTab-${t.id}`)}
             strategy={verticalListSortingStrategy}
           >
-            {leftTabs.map((tab) => (
+            {leftTabs.map((tab: Tab) => (
               <SortableTab
                 key={tab.id}
                 tab={tab}
@@ -197,6 +200,22 @@ export function Sidebar() {
               />
             ))}
           </SortableContext>
+          
+          <button
+            onClick={() => {
+              const newId = crypto.randomUUID();
+              updateSetting('leftTabs', [...leftTabs, { id: newId, name: 'New' }]);
+              setActiveLeftTab(newId);
+              setEditingTabId(newId);
+              setEditValue('New');
+            }}
+            className="w-10 h-10 flex items-center justify-center rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 text-gray-500 dark:text-gray-400 active:scale-95 active:translate-y-2 transform transition-transform"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
       </div>
       
       <div className="mt-auto mb-2 w-10 h-10 flex items-center justify-center" data-tauri-drag-region>

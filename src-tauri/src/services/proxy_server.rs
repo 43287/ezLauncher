@@ -11,7 +11,7 @@ pub static PROXY_CONNECTION: LazyLock<Mutex<Option<LocalSocketStream>>> = LazyLo
 static PROXY_STARTING_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub fn send_proxy_command(path: &str, args: Option<Vec<String>>, cwd: Option<String>, envs: Option<std::collections::HashMap<String, String>>) -> Result<(), ServiceError> {
-    let mut guard = PROXY_CONNECTION.lock().unwrap();
+    let mut guard = PROXY_CONNECTION.lock().map_err(|_| ServiceError::Concurrency("Proxy connection mutex poisoned".to_string()))?;
     if let Some(stream) = guard.as_mut() {
         let cmd = ProxyCommand {
             path: path.to_string(),
@@ -20,28 +20,38 @@ pub fn send_proxy_command(path: &str, args: Option<Vec<String>>, cwd: Option<Str
             envs,
             action: None,
         };
-        let mut payload = serde_json::to_vec(&cmd).map_err(|e| ServiceError::Serialization(e))?;
+        let mut payload = serde_json::to_vec(&cmd).map_err(ServiceError::Serialization)?;
         payload.push(b'\n');
         
-        if stream.write_all(&payload).is_ok() {
-            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
-            let mut response = String::new();
-            if reader.read_line(&mut response).is_ok() {
-                let resp_str = response.trim();
-                if resp_str == "OK" {
-                    return Ok(());
-                } else {
-                    return Err(ServiceError::Proxy(resp_str.to_string()));
+        let mut cloned_stream = stream.try_clone().map_err(ServiceError::Io)?;
+        
+        // 移出 Mutex 的写与读，使用 clone 的 stream 异步或同步执行，不阻塞主锁
+        // 但这里如果在原线程执行，依然会阻塞调用命令的线程。
+        // 由于这在 tauri command 中执行，可以用 spawn block
+        drop(guard);
+
+        if cloned_stream.write_all(&payload).is_ok() {
+            if let Ok(reader_stream) = cloned_stream.try_clone() {
+                let mut reader = std::io::BufReader::new(reader_stream);
+                let mut response = String::new();
+                if reader.read_line(&mut response).is_ok() {
+                    let resp_str = response.trim();
+                    if resp_str == "OK" {
+                        return Ok(());
+                    } else {
+                        return Err(ServiceError::Proxy(resp_str.to_string()));
+                    }
                 }
             }
         }
+        return Err(ServiceError::Proxy("Failed to communicate with proxy".to_string()));
     }
-    *guard = None;
+    drop(guard);
     Err(ServiceError::Proxy("Not connected".to_string()))
 }
 
 pub fn shutdown_proxy() -> Result<(), ServiceError> {
-    let mut guard = PROXY_CONNECTION.lock().unwrap();
+    let mut guard = PROXY_CONNECTION.lock().map_err(|_| ServiceError::Concurrency("Proxy connection mutex poisoned".to_string()))?;
     if let Some(stream) = guard.as_mut() {
         let cmd = ProxyCommand {
             path: "".to_string(),
@@ -50,7 +60,7 @@ pub fn shutdown_proxy() -> Result<(), ServiceError> {
             envs: None,
             action: Some("shutdown".to_string()),
         };
-        let mut payload = serde_json::to_vec(&cmd).map_err(|e| ServiceError::Serialization(e))?;
+        let mut payload = serde_json::to_vec(&cmd).map_err(ServiceError::Serialization)?;
         payload.push(b'\n');
         let _ = stream.write_all(&payload);
     }
@@ -147,9 +157,9 @@ pub fn init_main_listener() {
         }
         
         if let Ok(listener) = options.create_sync() {
-            for stream in listener.incoming() {
-                if let Ok(stream) = stream {
-                    *PROXY_CONNECTION.lock().unwrap() = Some(stream);
+            for stream in listener.incoming().flatten() {
+                if let Ok(mut guard) = PROXY_CONNECTION.lock() {
+                    *guard = Some(stream);
                 }
             }
         }
@@ -191,21 +201,12 @@ fn verify_parent_process(expected_pid: u32) -> bool {
                 
                 if res.is_ok() && size > 0 {
                     let path = String::from_utf16_lossy(&buffer[..size as usize]);
-                    let name = std::path::Path::new(&path)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.to_lowercase())
+                    let expected_path = std::env::current_exe()
+                        .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();
-                        
-                    let expected_name = std::env::current_exe()
-                        .ok()
-                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))
-                        .unwrap_or_else(|| "app.exe".to_string());
 
-                    if name == expected_name || name == "ezlauncher.exe" || name == "svchost.exe" || name == "explorer.exe" {
+                    if path.eq_ignore_ascii_case(&expected_path) {
                         return true;
-                    } else {
-                        return true; // fallback
                     }
                 }
             }
@@ -266,7 +267,14 @@ pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
         }
     };
 
-    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let stream_clone = match stream.try_clone() {
+        Ok(s) => s,
+        Err(e) => {
+            append_debug_log(&format!("====> Failed to clone stream: {}", e));
+            return;
+        }
+    };
+    let mut reader = BufReader::new(stream_clone);
     let mut line = String::new();
 
     loop {
@@ -289,7 +297,14 @@ pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
                         continue;
                     }
 
-                    let mut thread_stream = stream.try_clone().unwrap();
+                    let mut thread_stream = match stream.try_clone() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            let err_msg = format!("ERROR: Failed to clone stream: {:?}\n", e);
+                            let _ = stream.write_all(err_msg.as_bytes());
+                            continue;
+                        }
+                    };
                     std::thread::spawn(move || {
                         match crate::services::os::windows::launch_app_windows(&command.path, command.args, command.cwd, command.envs) {
                             Ok(_) => {

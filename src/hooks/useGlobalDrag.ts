@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { tauriApi } from "../api/tauri";
 import { LaunchItem } from "../types";
-import { useAppStore } from "../store/useAppStore";
+import { useDataStore } from "../store/useDataStore";
+import { useUIStore } from "../store/useUIStore";
 import { buildLaunchContext } from "../components/ShortcutItem";
 import { getIconForExtension, getInterpreterForExtension } from "../utils/icons";
 
@@ -50,7 +51,8 @@ export function useGlobalDrag(
             const paths = event.payload.paths;
             if (!paths || paths.length === 0) return;
 
-            const state = useAppStore.getState();
+            const state = useDataStore.getState();
+      const uiState = useUIStore.getState();
 
             // 如果悬停在某个应用上，则使用该应用打开拖放的文件
             if (hoveredId) {
@@ -121,8 +123,8 @@ export function useGlobalDrag(
                   iconUrl,
                   isDir,
                   shortcut: null,
-                  categoryId: state.activeLeftTab,
-                  columnId: state.activeTopTab
+                  categoryId: uiState.activeLeftTab,
+                  columnId: uiState.activeTopTab
                 };
                 
                 state.addApp(newApp);

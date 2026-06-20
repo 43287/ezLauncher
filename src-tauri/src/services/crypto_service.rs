@@ -31,14 +31,14 @@ impl CryptoService {
 impl CryptoServiceTrait for CryptoService {
     #[cfg(target_os = "windows")]
     fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError> {
-        let mut data_blob = CRYPT_INTEGER_BLOB {
+        let data_blob = CRYPT_INTEGER_BLOB {
             cbData: data.len() as u32,
             pbData: data.as_ptr() as *mut _,
         };
 
         // Application-specific entropy to prevent other programs running as the same user from decrypting
         let entropy_bytes = DPAPI_ENTROPY;
-        let mut entropy_blob = CRYPT_INTEGER_BLOB {
+        let entropy_blob = CRYPT_INTEGER_BLOB {
             cbData: entropy_bytes.len() as u32,
             pbData: entropy_bytes.as_ptr() as *mut _,
         };
@@ -50,9 +50,9 @@ impl CryptoServiceTrait for CryptoService {
 
         unsafe {
             let success = CryptProtectData(
-                &mut data_blob,
+                &data_blob,
                 PCWSTR::null(),
-                Some(&mut entropy_blob),
+                Some(&entropy_blob),
                 None,
                 None,
                 0,
@@ -72,13 +72,13 @@ impl CryptoServiceTrait for CryptoService {
 
     #[cfg(target_os = "windows")]
     fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError> {
-        let mut data_blob = CRYPT_INTEGER_BLOB {
+        let data_blob = CRYPT_INTEGER_BLOB {
             cbData: data.len() as u32,
             pbData: data.as_ptr() as *mut _,
         };
 
         let entropy_bytes = DPAPI_ENTROPY;
-        let mut entropy_blob = CRYPT_INTEGER_BLOB {
+        let entropy_blob = CRYPT_INTEGER_BLOB {
             cbData: entropy_bytes.len() as u32,
             pbData: entropy_bytes.as_ptr() as *mut _,
         };
@@ -90,9 +90,9 @@ impl CryptoServiceTrait for CryptoService {
 
         unsafe {
             let success = CryptUnprotectData(
-                &mut data_blob,
+                &data_blob,
                 None,
-                Some(&mut entropy_blob),
+                Some(&entropy_blob),
                 None,
                 None,
                 0,
