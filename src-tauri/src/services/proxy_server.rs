@@ -1,7 +1,8 @@
 use std::io::{BufRead, BufReader, Write};
-use interprocess::local_socket::{prelude::*, ListenerOptions, ToNsName, GenericNamespaced};
+use interprocess::local_socket::{prelude::*, ListenerOptions, ToNsName, GenericNamespaced, ListenerNonblockingMode};
 use interprocess::TryClone;
 use std::sync::{LazyLock, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
 
 use crate::services::error::ServiceError;
@@ -9,6 +10,7 @@ use crate::services::error::ServiceError;
 pub static MAIN_PIPE_NAME: LazyLock<String> = LazyLock::new(|| format!("ezlauncher_main_proxy_{}.sock", uuid::Uuid::new_v4().simple()));
 pub static PROXY_CONNECTION: LazyLock<Mutex<Option<LocalSocketStream>>> = LazyLock::new(|| Mutex::new(None));
 static PROXY_STARTING_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+pub static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
 
 pub fn send_proxy_command(path: &str, args: Option<Vec<String>>, cwd: Option<String>, envs: Option<std::collections::HashMap<String, String>>) -> Result<(), ServiceError> {
     let mut guard = PROXY_CONNECTION.lock().map_err(|_| ServiceError::Concurrency("Proxy connection mutex poisoned".to_string()))?;
@@ -156,10 +158,24 @@ pub fn init_main_listener() {
             }
         }
         
-        if let Ok(listener) = options.create_sync() {
-            for stream in listener.incoming().flatten() {
-                if let Ok(mut guard) = PROXY_CONNECTION.lock() {
-                    *guard = Some(stream);
+        if let Ok(listener) = options.nonblocking(ListenerNonblockingMode::Accept).create_sync() {
+            for stream in listener.incoming() {
+                if SHUTDOWN_FLAG.load(Ordering::Relaxed) {
+                    tracing::info!("====> Proxy listener shutting down due to shutdown flag");
+                    break;
+                }
+                match stream {
+                    Ok(s) => {
+                        if let Ok(mut guard) = PROXY_CONNECTION.lock() {
+                            *guard = Some(s);
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    Err(e) => {
+                        tracing::error!("Proxy listener accept error: {}", e);
+                    }
                 }
             }
         }

@@ -20,8 +20,8 @@ description: "Task list for fixing 6 core defects in ezLaunch"
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
-- [ ] T001 Update `AppError` `From` implementations to map specific `ServiceError` variants properly in `src-tauri/src/application/error.rs`
-- [ ] T002 Update `AppError` serialization logic to ensure accurate `code` extraction in `src-tauri/src/application/error.rs`
+- [x] T001 Update `AppError` `From` implementations to map specific `ServiceError` variants properly in `src-tauri/src/application/error.rs`
+- [x] T002 Update `AppError` serialization logic to ensure accurate `code` extraction in `src-tauri/src/application/error.rs`
 
 **Checkpoint**: Error propagation foundation ready.
 
@@ -35,9 +35,9 @@ description: "Task list for fixing 6 core defects in ezLaunch"
 
 ### Implementation for User Story 1
 
-- [ ] T003 [US1] Introduce `std::sync::atomic::AtomicBool` for shutdown signaling in `src-tauri/src/services/proxy_server.rs`
-- [ ] T004 [US1] Modify `init_main_listener` loop to periodically check the atomic flag or use a timeout/non-blocking accept in `src-tauri/src/services/proxy_server.rs`
-- [ ] T005 [US1] Hook into Tauri's window/app exit events to trigger the shutdown flag in `src-tauri/src/main.rs` or `src-tauri/src/application/events.rs`
+- [x] T003 [US1] Introduce `std::sync::atomic::AtomicBool` for shutdown signaling in `src-tauri/src/services/proxy_server.rs`
+- [x] T004 [US1] Modify `init_main_listener` loop to periodically check the atomic flag or use a timeout/non-blocking accept in `src-tauri/src/services/proxy_server.rs`
+- [x] T005 [US1] Hook into Tauri's window/app exit events to trigger the shutdown flag in `src-tauri/src/main.rs` or `src-tauri/src/application/events.rs`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently.
 
@@ -51,8 +51,8 @@ description: "Task list for fixing 6 core defects in ezLaunch"
 
 ### Implementation for User Story 2
 
-- [ ] T006 [P] [US2] Refactor `get_system_apps` in `src-tauri/src/application/commands/app_cmds.rs` to properly await `spawn_blocking`
-- [ ] T007 [P] [US2] Refactor `launch_app` in `src-tauri/src/application/commands/app_cmds.rs` to properly await `spawn_blocking` (or remove if unnecessary)
+- [x] T006 [P] [US2] Refactor `get_system_apps` in `src-tauri/src/application/commands/app_cmds.rs` to properly await `spawn_blocking`
+- [x] T007 [P] [US2] Refactor `launch_app` in `src-tauri/src/application/commands/app_cmds.rs` to properly await `spawn_blocking` (or remove if unnecessary)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently.
 
@@ -66,9 +66,9 @@ description: "Task list for fixing 6 core defects in ezLaunch"
 
 ### Implementation for User Story 3
 
-- [ ] T008 [P] [US3] Refactor `save_file` in `src-tauri/src/services/store_service.rs` to await the background thread and return `Result<(), ServiceError>` instead of spawning detached
-- [ ] T009 [P] [US3] Update `save_settings` and `save_apps` Tauri commands in `src-tauri/src/application/commands/store_cmds.rs` to be async and return the awaited Result
-- [ ] T010 [US3] Add global error catching or specific catch blocks in frontend API calls (`src/api/tauri.ts` or component) to trigger a Toast Notification on `IO_ERROR`
+- [x] T008 [P] [US3] Refactor `save_file` in `src-tauri/src/services/store_service.rs` to await the background thread and return `Result<(), ServiceError>` instead of spawning detached
+- [x] T009 [P] [US3] Update `save_settings` and `save_apps` Tauri commands in `src-tauri/src/application/commands/store_cmds.rs` to be async and return the awaited Result
+- [x] T010 [US3] Add global error catching or specific catch blocks in frontend API calls (`src/api/tauri.ts` or component) to trigger a Toast Notification on `IO_ERROR`
 
 **Checkpoint**: All user stories up to 3 should now be independently functional.
 
@@ -82,9 +82,9 @@ description: "Task list for fixing 6 core defects in ezLaunch"
 
 ### Implementation for User Story 4
 
-- [ ] T011 [US4] Implement a helper function using Windows COM API (`IShellLinkW`, `IPersistFile`) to resolve `.lnk` target paths and arguments in `src-tauri/src/services/os/windows.rs`
-- [ ] T012 [US4] Update `launch_app` in `src-tauri/src/services/execution_service.rs` to detect `.lnk` files and call the resolution helper before passing to proxy
-- [ ] T013 [US4] Ensure resolved arguments and working directories are properly merged with user-provided args in `execution_service.rs`
+- [x] T011 [US4] Implement a helper function using Windows COM API (`IShellLinkW`, `IPersistFile`) to resolve `.lnk` target paths and arguments in `src-tauri/src/services/os/windows.rs`
+- [x] T012 [US4] Update `launch_app` in `src-tauri/src/services/execution_service.rs` to detect `.lnk` files and call the resolution helper before passing to proxy
+- [x] T013 [US4] Ensure resolved arguments and working directories are properly merged with user-provided args in `execution_service.rs`
 
 **Checkpoint**: Admin `.lnk` launch should now be reliable.
 
@@ -98,8 +98,8 @@ description: "Task list for fixing 6 core defects in ezLaunch"
 
 ### Implementation for User Story 5
 
-- [ ] T014 [P] [US5] Refactor `encrypt_data` in `src-tauri/src/services/crypto_service.rs` to copy `data` into a `Vec<u8>` and use `as_mut_ptr()` for `CRYPT_INTEGER_BLOB`
-- [ ] T015 [P] [US5] Refactor `decrypt_data` in `src-tauri/src/services/crypto_service.rs` to copy `data` into a `Vec<u8>` and use `as_mut_ptr()` for `CRYPT_INTEGER_BLOB`
+- [x] T014 [P] [US5] Refactor `encrypt_data` in `src-tauri/src/services/crypto_service.rs` to copy `data` into a `Vec<u8>` and use `as_mut_ptr()` for `CRYPT_INTEGER_BLOB`
+- [x] T015 [P] [US5] Refactor `decrypt_data` in `src-tauri/src/services/crypto_service.rs` to copy `data` into a `Vec<u8>` and use `as_mut_ptr()` for `CRYPT_INTEGER_BLOB`
 
 **Checkpoint**: All UB should be eliminated from the crypto service.
 
@@ -113,8 +113,8 @@ description: "Task list for fixing 6 core defects in ezLaunch"
 
 ### Implementation for User Story 6
 
-- [ ] T016 [US6] Remove `.map_err(|e| AppError::Other(e.to_string()))` usages across `app_cmds.rs`, `store_cmds.rs`, and `hotkey_cmds.rs`
-- [ ] T017 [US6] Replace with `.map_err(AppError::Service)` or direct propagation using `?` where applicable
+- [x] T016 [US6] Remove `.map_err(|e| AppError::Other(e.to_string()))` usages across `app_cmds.rs`, `store_cmds.rs`, and `hotkey_cmds.rs`
+- [x] T017 [US6] Replace with `.map_err(AppError::Service)` or direct propagation using `?` where applicable
 
 **Checkpoint**: All user stories are now implemented.
 
@@ -124,7 +124,7 @@ description: "Task list for fixing 6 core defects in ezLaunch"
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T018 Run quickstart.md validation steps for all features.
+- [x] T018 Run quickstart.md validation steps for all features.
 
 ---
 

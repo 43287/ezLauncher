@@ -32,13 +32,43 @@ impl ExecutionServiceTrait for ExecutionService {
         
         // 对于管理员提权启动，如果直接传入的是 .lnk 快捷方式，底层 Proxy 的 cmd.spawn() 会报 os error 193 
         // 因此我们在 service 层将 lnk 解析为真实的 target path 再发给 Proxy
-        let final_path = executable_path.to_string();
-        let final_args = args.clone();
+        let mut final_path = executable_path.to_string();
+        let mut final_args = args.clone();
+        let mut final_cwd = cwd.clone();
+
+        if final_path.to_lowercase().ends_with(".lnk") {
+            match crate::services::os::windows::resolve_lnk_path(&final_path) {
+                Ok(resolved) => {
+                    tracing::info!("====> 解析 .lnk 文件: {} -> {:?}", final_path, resolved);
+                    final_path = resolved.target_path;
+                    
+                    if let Some(lnk_args) = resolved.arguments {
+                        let mut new_args = Vec::new();
+                        if let Ok(parsed) = shell_words::split(&lnk_args) {
+                            new_args.extend(parsed);
+                        } else {
+                            new_args.push(lnk_args);
+                        }
+                        if let Some(existing) = final_args {
+                            new_args.extend(existing);
+                        }
+                        final_args = Some(new_args);
+                    }
+                    
+                    if final_cwd.is_none() && resolved.working_dir.is_some() {
+                        final_cwd = resolved.working_dir;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("====> 解析 .lnk 文件失败, 将使用原路径: {}", e);
+                }
+            }
+        }
             
         if run_as_admin {
-            crate::services::proxy_server::request_admin_launch(&final_path, final_args, cwd, envs)
+            crate::services::proxy_server::request_admin_launch(&final_path, final_args, final_cwd, envs)
         } else {
-            crate::services::os::windows::launch_app_windows(&final_path, final_args, cwd, envs)
+            crate::services::os::windows::launch_app_windows(&final_path, final_args, final_cwd, envs)
         }
     }
 

@@ -7,11 +7,14 @@ use tauri::Manager;
 use crate::services::error::ServiceError;
 use crate::services::crypto_service::CryptoServiceTrait;
 
+use async_trait::async_trait;
+
+#[async_trait]
 pub trait StoreServiceTrait: Send + Sync {
     fn get_store_path(&self, portable: bool, app_handle: &AppHandle, file_name: &str) -> Result<String, ServiceError>;
     fn migrate_store_data(&self, to_portable: bool, app_handle: &AppHandle) -> Result<(), ServiceError>;
     
-    fn load_file(
+    async fn load_file(
         &self,
         portable: bool,
         file_name: &str,
@@ -19,7 +22,7 @@ pub trait StoreServiceTrait: Send + Sync {
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<String, ServiceError>;
     
-    fn save_file(
+    async fn save_file(
         &self,
         portable: bool,
         file_name: &str,
@@ -28,13 +31,13 @@ pub trait StoreServiceTrait: Send + Sync {
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<(), ServiceError>;
 
-    fn load_settings(
+    async fn load_settings(
         &self,
         portable: bool,
         app_handle: &AppHandle,
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<String, ServiceError>;
-    fn save_settings(
+    async fn save_settings(
         &self,
         portable: bool,
         settings_json: String,
@@ -42,13 +45,13 @@ pub trait StoreServiceTrait: Send + Sync {
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<(), ServiceError>;
     
-    fn load_apps(
+    async fn load_apps(
         &self,
         portable: bool,
         app_handle: &AppHandle,
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<String, ServiceError>;
-    fn save_apps(
+    async fn save_apps(
         &self,
         portable: bool,
         apps_json: String,
@@ -73,6 +76,7 @@ impl StoreService {
     }
 }
 
+#[async_trait]
 impl StoreServiceTrait for StoreService {
     fn get_store_path(&self, portable: bool, app_handle: &AppHandle, file_name: &str) -> Result<String, ServiceError> {
         if portable {
@@ -111,7 +115,7 @@ impl StoreServiceTrait for StoreService {
         Ok(())
     }
 
-    fn load_file(
+    async fn load_file(
         &self,
         portable: bool,
         file_name: &str,
@@ -147,7 +151,7 @@ impl StoreServiceTrait for StoreService {
                 };
 
                 if is_valid_json {
-                    let _ = self.save_file(portable, file_name, content.clone(), app_handle, crypto_service);
+                    let _ = self.save_file(portable, file_name, content.clone(), app_handle, crypto_service).await;
                     Ok(content)
                 } else {
                     // 解密且解析失败，这是致命错误，返回 ParseError 阻止启动并触发恢复向导
@@ -158,7 +162,7 @@ impl StoreServiceTrait for StoreService {
         }
     }
 
-    fn save_file(
+    async fn save_file(
         &self,
         portable: bool,
         file_name: &str,
@@ -199,47 +203,49 @@ impl StoreServiceTrait for StoreService {
             
             tracing::info!("Saved {} via background thread successfully.", file_name_str);
             Ok(())
-        });
+        })
+        .await
+        .map_err(|e| ServiceError::Internal(e.to_string()))??;
 
         Ok(())
     }
 
-    fn load_settings(
+    async fn load_settings(
         &self,
         portable: bool,
         app_handle: &AppHandle,
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<String, ServiceError> {
-        self.load_file(portable, "settings.json", app_handle, crypto_service)
+        self.load_file(portable, "settings.json", app_handle, crypto_service).await
     }
 
-    fn save_settings(
+    async fn save_settings(
         &self,
         portable: bool,
         settings_json: String,
         app_handle: &AppHandle,
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<(), ServiceError> {
-        self.save_file(portable, "settings.json", settings_json, app_handle, crypto_service)
+        self.save_file(portable, "settings.json", settings_json, app_handle, crypto_service).await
     }
     
-    fn load_apps(
+    async fn load_apps(
         &self,
         portable: bool,
         app_handle: &AppHandle,
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<String, ServiceError> {
-        self.load_file(portable, "apps.json", app_handle, crypto_service)
+        self.load_file(portable, "apps.json", app_handle, crypto_service).await
     }
 
-    fn save_apps(
+    async fn save_apps(
         &self,
         portable: bool,
         apps_json: String,
         app_handle: &AppHandle,
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<(), ServiceError> {
-        self.save_file(portable, "apps.json", apps_json, app_handle, crypto_service)
+        self.save_file(portable, "apps.json", apps_json, app_handle, crypto_service).await
     }
 
     fn restore_from_backup(&self, portable: bool, app_handle: &AppHandle) -> Result<(), ServiceError> {

@@ -40,6 +40,7 @@ tokio = { version = "1.52.3", features = ["fs", "rt", "rt-multi-thread", "time"]
 tauri-plugin-dialog = "2.7.1"
 shell-words = "1.1.1"
 ts-rs = "10.1.0"
+async-trait = "0.1.89"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58.0", features = [
@@ -55,6 +56,7 @@ windows = { version = "0.58.0", features = [
     "Win32_System_Memory",
     "Win32_UI_Controls",
     "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
 ] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

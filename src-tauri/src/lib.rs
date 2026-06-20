@@ -145,10 +145,17 @@ pub fn run() {
         .on_window_event(|_window, event| {
             // 当主窗口被销毁或应用退出时，清理代理进程
             if let tauri::WindowEvent::Destroyed = event {
+                crate::services::proxy_server::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::Relaxed);
                 let _ = crate::services::proxy_server::shutdown_proxy();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                crate::services::proxy_server::SHUTDOWN_FLAG.store(true, std::sync::atomic::Ordering::Relaxed);
+                let _ = crate::services::proxy_server::shutdown_proxy();
+            }
+        });
 }
 

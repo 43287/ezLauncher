@@ -202,6 +202,72 @@ pub fn launch_app_windows(executable_path: &str, args: Option<Vec<String>>, cwd:
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ResolvedLnk {
+    pub target_path: String,
+    pub arguments: Option<String>,
+    pub working_dir: Option<String>,
+}
+
+pub fn resolve_lnk_path(lnk_path: &str) -> Result<ResolvedLnk, ServiceError> {
+    use windows::core::{Interface, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, CoCreateInstance, 
+        COINIT_APARTMENTTHREADED, CLSCTX_INPROC_SERVER, IPersistFile, STGM
+    };
+    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+    use widestring::U16CString;
+
+    let lnk_u16 = U16CString::from_str(lnk_path)
+        .map_err(|e| ServiceError::Internal(format!("Failed to parse lnk path: {}", e)))?;
+
+    unsafe {
+        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let should_uninit = hr.is_ok();
+
+        let result = (|| -> windows::core::Result<ResolvedLnk> {
+            let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
+            let persist_file: IPersistFile = shell_link.cast()?;
+            
+            // STGM_READ = 0
+            persist_file.Load(PCWSTR(lnk_u16.as_ptr()), STGM(0))?;
+
+            let mut path_buf = [0u16; 1024];
+            shell_link.GetPath(&mut path_buf, std::ptr::null_mut(), 0)?;
+            let end = path_buf.iter().position(|&c| c == 0).unwrap_or(path_buf.len());
+            let target_path = String::from_utf16_lossy(&path_buf[..end]);
+
+            let mut args_buf = [0u16; 1024];
+            let arguments = match shell_link.GetArguments(&mut args_buf) {
+                Ok(_) => {
+                    let end = args_buf.iter().position(|&c| c == 0).unwrap_or(args_buf.len());
+                    let args_str = String::from_utf16_lossy(&args_buf[..end]);
+                    if args_str.is_empty() { None } else { Some(args_str) }
+                }
+                Err(_) => None,
+            };
+
+            let mut dir_buf = [0u16; 1024];
+            let working_dir = match shell_link.GetWorkingDirectory(&mut dir_buf) {
+                Ok(_) => {
+                    let end = dir_buf.iter().position(|&c| c == 0).unwrap_or(dir_buf.len());
+                    let dir_str = String::from_utf16_lossy(&dir_buf[..end]);
+                    if dir_str.is_empty() { None } else { Some(dir_str) }
+                }
+                Err(_) => None,
+            };
+            
+            Ok(ResolvedLnk { target_path, arguments, working_dir })
+        })();
+
+        if should_uninit {
+            CoUninitialize();
+        }
+
+        result.map_err(|e| ServiceError::Internal(format!("Failed to resolve .lnk path: {}", e)))
+    }
+}
+
 pub fn relaunch_as_admin() -> Result<(), ServiceError> {
     #[cfg(debug_assertions)]
     {

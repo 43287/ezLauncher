@@ -15,7 +15,7 @@ export const buildLaunchContext = (app: LaunchItem, dropPaths?: string[]) => {
   let envs: Record<string, string> | undefined = undefined;
   if (app.envVariables) {
     envs = {};
-    app.envVariables.split('\n').forEach(line => {
+    app.envVariables.split('\n').forEach((line: string) => {
       const parts = line.split('=');
       if (parts.length >= 2) {
         const key = parts[0].trim();

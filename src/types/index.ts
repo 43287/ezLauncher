@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import type { LaunchItem as RustLaunchItem, Tab as RustTab, SettingsConfig as RustSettingsConfig } from './LaunchItem';
+import type { LaunchItem as RustLaunchItem } from './LaunchItem';
+import type { Tab as RustTab } from './Tab';
+import type { SettingsConfig as RustSettingsConfig } from './SettingsConfig';
 
 export type Tab = RustTab;
 
@@ -36,7 +38,7 @@ export const LaunchItemSchema = z.object({
 export const SettingsSchema = z.object({
   columns: z.number().default(4),
   summonShortcut: z.string().default('Alt+Space'),
-  summonMouseShortcut: z.string().optional(),
+  summonMouseShortcut: z.string().nullable().default(null),
   dockPosition: z.enum(['left', 'right']).default('right'),
   leftTabs: z.array(TabSchema).default([
     { id: '1', name: 'App' },

@@ -8,6 +8,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
 import { GlobalContextMenu } from "./components/layout/GlobalContextMenu";
 import { AppModals } from "./components/AppModals";
+import { ToastContainer } from "./components/ToastContainer";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useWheelNavigation } from "./hooks/useWheelNavigation";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
@@ -91,7 +92,7 @@ function App() {
     }
   };
 
-  useTauriEvents(setIsVisible, isVisible, settings.summonShortcut, settings.summonMouseShortcut);
+  useTauriEvents(setIsVisible, isVisible, settings.summonShortcut, settings.summonMouseShortcut || undefined);
   useGlobalShortcuts(isVisible);
 
   // 根据 dockPosition 决定 flex 的排列方向
@@ -206,6 +207,7 @@ function App() {
 
       <AppModals />
       <GlobalContextMenu />
+      <ToastContainer />
     </div>
   );
 }

@@ -9,13 +9,14 @@ pub async fn get_system_apps(
     execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>
 ) -> Result<Vec<SystemApp>, AppError> {
     let service = execution_service.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let arc_apps = tauri::async_runtime::spawn_blocking(move || {
         service.get_system_apps()
     })
     .await
-    .map_err(|e| AppError::Other(e.to_string()))?
-    .map_err(|e| AppError::Other(e.to_string()))
-    .map(|arc_apps| arc_apps.as_ref().clone())
+    .map_err(|e| AppError::Other(format!("Thread join error: {}", e)))?
+    .map_err(AppError::from)?;
+    
+    Ok(arc_apps.as_ref().clone())
 }
 
 #[command]
@@ -32,8 +33,9 @@ pub async fn launch_app(
         service.launch_app(&executable_path, args, run_as_admin.unwrap_or(false), cwd, envs)
     })
     .await
-    .map_err(|e| AppError::Other(e.to_string()))?
-    .map_err(|e| AppError::Execution(e.to_string()))
+    .map_err(|e| AppError::Other(format!("Thread join error: {}", e)))?
+    .map_err(AppError::from)?;
+    Ok(())
 }
 
 #[command]
@@ -41,14 +43,14 @@ pub fn extract_file_info(
     file_path: String,
     execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>
 ) -> Result<ExtractedFileInfo, AppError> {
-    execution_service.extract_file_info(&file_path).map_err(|e| AppError::Other(e.to_string()))
+    execution_service.extract_file_info(&file_path).map_err(AppError::from)
 }
 
 #[command]
 pub fn restart_as_admin(
     execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>
 ) -> Result<(), AppError> {
-    execution_service.relaunch_as_admin().map_err(|e| AppError::Other(e.to_string()))
+    Ok(execution_service.relaunch_as_admin()?)
 }
 
 #[command]

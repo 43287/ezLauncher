@@ -159,7 +159,7 @@ export function TopBar() {
       aria-label="次级导航"
       onDoubleClick={handleContainerDoubleClick}
     >
-      {currentTopTabs.map((tab) => {
+      {currentTopTabs.map((tab: Tab) => {
         const isActive = activeTopTab === tab.id;
         const isEditing = editingTabId === tab.id;
 

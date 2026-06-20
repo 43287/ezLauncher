@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { useToastStore } from "../store/useToastStore";
 
 export const tauriApi = {
   loadSettings: async (portable: boolean): Promise<string> => {
@@ -9,7 +10,13 @@ export const tauriApi = {
     portable: boolean,
     settingsJson: string,
   ): Promise<void> => {
-    return invoke<void>("save_settings", { portable, settingsJson });
+    try {
+      await invoke<void>("save_settings", { portable, settingsJson });
+    } catch (err: any) {
+      console.error("Failed to save settings:", err);
+      useToastStore.getState().addToast(`保存设置失败 (IO_ERROR): ${err}`, 'error');
+      throw err;
+    }
   },
 
   loadApps: async (portable: boolean): Promise<string> => {
@@ -20,7 +27,13 @@ export const tauriApi = {
     portable: boolean,
     appsJson: string,
   ): Promise<void> => {
-    return invoke<void>("save_apps", { portable, appsJson });
+    try {
+      await invoke<void>("save_apps", { portable, appsJson });
+    } catch (err: any) {
+      console.error("Failed to save apps:", err);
+      useToastStore.getState().addToast(`保存应用列表失败 (IO_ERROR): ${err}`, 'error');
+      throw err;
+    }
   },
 
   restoreFromBackup: async (portable: boolean): Promise<void> => {

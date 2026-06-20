@@ -17,7 +17,7 @@ pub enum AppError {
     Execution(String),
 
     #[error("Service Error: {0}")]
-    Service(#[from] ServiceError),
+    Service(ServiceError),
 
     #[error("Other Error: {0}")]
     Other(String),
@@ -67,5 +67,17 @@ impl From<String> for AppError {
 impl From<&str> for AppError {
     fn from(s: &str) -> Self {
         AppError::Other(s.to_string())
+    }
+}
+
+// 映射 ServiceError 的特定变体到 AppError
+impl From<ServiceError> for AppError {
+    fn from(err: ServiceError) -> Self {
+        match err {
+            ServiceError::Io(e) => AppError::Io(e),
+            ServiceError::Crypto(s) => AppError::Crypto(s),
+            ServiceError::Launch(s) => AppError::Execution(s),
+            other => AppError::Service(other),
+        }
     }
 }

@@ -31,16 +31,17 @@ impl CryptoService {
 impl CryptoServiceTrait for CryptoService {
     #[cfg(target_os = "windows")]
     fn encrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError> {
+        let mut data_vec = data.to_vec();
         let data_blob = CRYPT_INTEGER_BLOB {
-            cbData: data.len() as u32,
-            pbData: data.as_ptr() as *mut _,
+            cbData: data_vec.len() as u32,
+            pbData: data_vec.as_mut_ptr(),
         };
 
         // Application-specific entropy to prevent other programs running as the same user from decrypting
-        let entropy_bytes = DPAPI_ENTROPY;
+        let mut entropy_vec = DPAPI_ENTROPY.to_vec();
         let entropy_blob = CRYPT_INTEGER_BLOB {
-            cbData: entropy_bytes.len() as u32,
-            pbData: entropy_bytes.as_ptr() as *mut _,
+            cbData: entropy_vec.len() as u32,
+            pbData: entropy_vec.as_mut_ptr(),
         };
 
         let mut encrypted_blob = CRYPT_INTEGER_BLOB {
@@ -72,15 +73,16 @@ impl CryptoServiceTrait for CryptoService {
 
     #[cfg(target_os = "windows")]
     fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError> {
+        let mut data_vec = data.to_vec();
         let data_blob = CRYPT_INTEGER_BLOB {
-            cbData: data.len() as u32,
-            pbData: data.as_ptr() as *mut _,
+            cbData: data_vec.len() as u32,
+            pbData: data_vec.as_mut_ptr(),
         };
 
-        let entropy_bytes = DPAPI_ENTROPY;
+        let mut entropy_vec = DPAPI_ENTROPY.to_vec();
         let entropy_blob = CRYPT_INTEGER_BLOB {
-            cbData: entropy_bytes.len() as u32,
-            pbData: entropy_bytes.as_ptr() as *mut _,
+            cbData: entropy_vec.len() as u32,
+            pbData: entropy_vec.as_mut_ptr(),
         };
 
         let mut decrypted_blob = CRYPT_INTEGER_BLOB {

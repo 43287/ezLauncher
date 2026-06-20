@@ -18,9 +18,9 @@ interface DataState {
   updateApp: (id: string, updates: Partial<LaunchItem>) => void;
 }
 
-export const useDataStore = create<DataState>((set, get) => ({
+export const useDataStore = create<DataState>((set) => ({
   apps: [],
-  settings: SettingsSchema.parse({}), // default settings
+  settings: SettingsSchema.parse({}) as SettingsConfig, // default settings
   isLoaded: false,
 
   setIsLoaded: (loaded) => set({ isLoaded: loaded }),
