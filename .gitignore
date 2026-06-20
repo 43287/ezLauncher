@@ -24,6 +24,8 @@ src-tauri/Cargo.lock
 
 # Trae AI specs and context
 .trae/
+specs/
+.specify/
 
 # Docs and Output
 output/

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { tauriApi } from "../api/tauri";
+import { platform } from "../api/platform";
 import { FORCE_HIDE_ANIMATION, FORCE_SHOW_ANIMATION, TOGGLE_VISIBILITY } from "../constants/events";
 import { useUIStore } from '../store/useUIStore';
 
@@ -47,7 +47,7 @@ export function useTauriEvents(setIsVisible: React.Dispatch<React.SetStateAction
         const unlistenToggle = await listen(TOGGLE_VISIBILITY, () => {
           setIsVisible((prev) => {
             if (prev) {
-              tauriApi.hideWindow();
+              platform.hideWindow();
               return false;
             } else {
               return true;
@@ -80,7 +80,7 @@ export function useTauriEvents(setIsVisible: React.Dispatch<React.SetStateAction
       try {
         if (isRecordingShortcut) {
           try {
-            await tauriApi.unregisterAllShortcuts();
+            await platform.unregisterAllShortcuts();
           } catch (e) {
             console.warn("Unregister all shortcuts failed:", e);
           }
@@ -90,7 +90,7 @@ export function useTauriEvents(setIsVisible: React.Dispatch<React.SetStateAction
 
         // 先注销所有旧快捷键
         try {
-          await tauriApi.unregisterAllShortcuts();
+          await platform.unregisterAllShortcuts();
         } catch (e) {
           console.warn("Unregister all shortcuts failed:", e);
         }
@@ -102,17 +102,17 @@ export function useTauriEvents(setIsVisible: React.Dispatch<React.SetStateAction
         const finalSummonMouseShortcut = summonMouseShortcut || 'Mouse4';
 
         if (finalSummonShortcut) {
-          await tauriApi.registerShortcut(finalSummonShortcut);
+          await platform.registerShortcut(finalSummonShortcut);
         }
         if (finalSummonMouseShortcut) {
-          await tauriApi.registerShortcut(finalSummonMouseShortcut);
+          await platform.registerShortcut(finalSummonMouseShortcut);
         }
         
         if (isActive) {
           currentShortcutRef.current = `${finalSummonShortcut}|${finalSummonMouseShortcut}`;
         } else {
           // 如果注册完成后发现组件已经卸载/依赖已变，就立刻注销刚才注册的
-          await tauriApi.unregisterAllShortcuts();
+          await platform.unregisterAllShortcuts();
         }
       } catch (e) {
         console.error("Failed to register shortcut:", e);
@@ -124,7 +124,7 @@ export function useTauriEvents(setIsVisible: React.Dispatch<React.SetStateAction
     return () => {
       isActive = false;
       if (currentShortcutRef.current) {
-        tauriApi.unregisterAllShortcuts().catch(e => {
+        platform.unregisterAllShortcuts().catch((e: any) => {
           console.error("Failed to unregister shortcut on cleanup:", e);
         });
         currentShortcutRef.current = null;

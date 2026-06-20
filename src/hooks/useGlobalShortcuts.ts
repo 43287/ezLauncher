@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { tauriApi } from "../api/tauri";
+import { platform } from "../api/platform";
 import { useUIStore } from "../store/useUIStore";
 import { useDataStore } from "../store/useDataStore";
 
@@ -21,7 +21,7 @@ export function useGlobalShortcuts(isVisible: boolean) {
         if (isShortcutMatch(e, summonShortcut)) {
           e.preventDefault();
           e.stopPropagation();
-          tauriApi.hideWindow();
+          platform.hideWindow();
         }
       }
     };
@@ -34,7 +34,7 @@ export function useGlobalShortcuts(isVisible: boolean) {
       if (isMouseMatch(e, summonMouseShortcut)) {
         e.preventDefault();
         e.stopPropagation();
-        tauriApi.hideWindow();
+        platform.hideWindow();
       }
     };
 

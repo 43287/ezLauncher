@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { tauriApi } from "../api/tauri";
+import { platform } from "../api/platform";
 import { LaunchItem } from "../types";
 import { useDataStore } from "../store/useDataStore";
 import { useUIStore } from "../store/useUIStore";
-import { buildLaunchContext } from "../components/ShortcutItem";
+import { LaunchService } from "../services/LaunchService";
 import { getIconForExtension, getInterpreterForExtension } from "../utils/icons";
 
 export function useGlobalDrag(
@@ -59,9 +59,7 @@ export function useGlobalDrag(
               const targetApp = state.apps.find(a => a.id === hoveredId);
               if (targetApp && targetApp.type === 'app' && targetApp.executablePath) {
                 try {
-                  const { argsArray, cwd, envs } = buildLaunchContext(targetApp, paths);
-                  await tauriApi.hideWindow();
-                  await tauriApi.launchApp(targetApp.executablePath, argsArray, false, cwd, envs);
+                  await LaunchService.executeLaunch(targetApp, false, paths);
                 } catch (error) {
                   console.error("Failed to launch app with args:", error);
                 }
@@ -85,14 +83,14 @@ export function useGlobalDrag(
                   ext = extMatch[1].toLowerCase();
                 }
 
-                const info = await tauriApi.extractFileInfo(path);
+                const info = await platform.extractFileInfo(path);
                 finalName = info.name || finalName;
                 let isDir = info.isDir || false;
                 
                 let iconUrl = info.iconUrl || undefined;
                 let type: 'app' | 'script' = 'app';
                 let executablePath = path;
-                let args = undefined;
+                let args: string | null = null;
 
                 if (!isDir && ext) {
                   const svgIcon = getIconForExtension(ext);
@@ -124,7 +122,12 @@ export function useGlobalDrag(
                   isDir,
                   shortcut: null,
                   categoryId: uiState.activeLeftTab,
-                  columnId: uiState.activeTopTab
+                  columnId: uiState.activeTopTab,
+                  url: null,
+                  cwd: null,
+                  envVariables: null,
+                  runAsAdmin: false,
+                  inTerminal: false,
                 };
                 
                 state.addApp(newApp);

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import * as LucideIcons from "lucide-react";
 import { LaunchItem } from "../types";
-import { tauriApi } from "../api/tauri";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useContextMenuStore } from "../store/useContextMenuStore";
@@ -9,65 +8,8 @@ import { useDataStore } from "../store/useDataStore";
 import { useUIStore } from "../store/useUIStore";
 import { useModalStore } from "../store/useModalStore";
 import { resolveIcon } from "../utils/icons";
-
-export const buildLaunchContext = (app: LaunchItem, dropPaths?: string[]) => {
-  // 1. 处理环境变量
-  let envs: Record<string, string> | undefined = undefined;
-  if (app.envVariables) {
-    envs = {};
-    app.envVariables.split('\n').forEach((line: string) => {
-      const parts = line.split('=');
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        const val = parts.slice(1).join('=').trim();
-        if (key) envs![key] = val;
-      }
-    });
-    if (Object.keys(envs).length === 0) envs = undefined;
-  }
-
-  // 2. 处理 args 宏替换
-  let finalArgsStr = app.args || "";
-  let dropHandledInArgs = false;
-  if (dropPaths && dropPaths.length > 0) {
-    const firstPath = dropPaths[0];
-    const parentDir = firstPath.substring(0, Math.max(firstPath.lastIndexOf('\\'), firstPath.lastIndexOf('/')));
-
-    if (finalArgsStr.includes("{target_path}") || finalArgsStr.includes("{target_file}") || finalArgsStr.includes("{{drop_file}}")) {
-      // 替换 {target_path}
-      if (parentDir) {
-        finalArgsStr = finalArgsStr.replace(/\{target_path\}/g, `"${parentDir}"`);
-      }
-      
-      // 替换 {target_file} 和旧版兼容的 {{drop_file}}
-      const replacement = dropPaths.map(p => `"${p}"`).join(' ');
-      finalArgsStr = finalArgsStr.replace(/\{target_file\}/g, replacement);
-      finalArgsStr = finalArgsStr.replace(/\{\{drop_file\}\}/g, replacement);
-      
-      dropHandledInArgs = true;
-    } else {
-      // 默认追加行为
-      finalArgsStr += " " + dropPaths.map(p => `"${p}"`).join(' ');
-    }
-  }
-
-  // 由于后端已经引入了 shell-words 解析器，我们不再在前端使用容易出错的正则表达式拆分。
-  // 直接将整个宏替换后的字符串作为单一元素数组传给后端，后端检测到长度为 1 时会自动解析。
-  const argsArray: string[] = finalArgsStr.trim() ? [finalArgsStr.trim()] : [];
-
-  // 3. 处理 cwd 宏替换
-  let finalCwd = app.cwd || undefined;
-  if (dropPaths && dropPaths.length > 0 && finalCwd) {
-    const firstPath = dropPaths[0];
-    const parentDir = firstPath.substring(0, Math.max(firstPath.lastIndexOf('\\'), firstPath.lastIndexOf('/')));
-    if (parentDir) {
-      finalCwd = finalCwd.replace(/\{target_path\}/g, parentDir);
-      finalCwd = finalCwd.replace(/\{\{drop_dir\}\}/g, parentDir);
-    }
-  }
-
-  return { argsArray, cwd: finalCwd, envs, dropHandledInArgs };
-};
+import { LaunchService } from "../services/LaunchService";
+import { platform } from "../api/platform";
 
 interface ShortcutItemProps {
   app: LaunchItem;
@@ -106,44 +48,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
   };
 
   const handleLaunch = async (e?: React.MouseEvent, forceAdmin?: boolean) => {
-    if (app.type === 'separator') return;
-    const runAsAdmin = forceAdmin || (e ? e.shiftKey : false) || app.runAsAdmin || false;
-    try {
-      // 启动前先隐藏窗口，提升响应速度体验
-      await tauriApi.hideWindow();
-      if (app.type === 'link' && app.url) {
-        // 对于网页链接，交给 Rust 后端调用 open crate 处理（Windows 上通常使用 ShellExecute 打开默认浏览器）
-        await tauriApi.launchApp(app.url, [], runAsAdmin);
-      } else if (app.type === 'command') {
-        const { argsArray, cwd, envs } = buildLaunchContext(app);
-        
-        let shellExe = app.executablePath || 'pwsh';
-        let shellArgs: string[] = [];
-        
-        if (shellExe === 'pwsh' || shellExe === 'powershell') {
-          shellArgs = ['-NoProfile', '-Command', argsArray.join(' ')];
-        } else if (shellExe === 'cmd') {
-          shellArgs = ['/C', argsArray.join(' ')];
-        } else if (shellExe === 'bash') {
-          shellArgs = ['-c', argsArray.join(' ')];
-        } else {
-          shellArgs = argsArray;
-        }
-
-        // 如果用户要求在终端中运行，我们通过 cmd /C start 来弹出一个新的终端窗口
-        if (app.inTerminal) {
-          const terminalArgs = ['/C', 'start', shellExe, ...shellArgs];
-          await tauriApi.launchApp('cmd.exe', terminalArgs, runAsAdmin, cwd, envs);
-        } else {
-          await tauriApi.launchApp(shellExe, shellArgs, runAsAdmin, cwd, envs);
-        }
-      } else if (app.executablePath) {
-        const { argsArray, cwd, envs } = buildLaunchContext(app);
-        await tauriApi.launchApp(app.executablePath, argsArray, runAsAdmin, cwd, envs);
-      }
-    } catch (error) {
-      console.error("Failed to launch app:", error);
-    }
+    await LaunchService.executeLaunch(app, forceAdmin || (e ? e.shiftKey : false));
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -175,7 +80,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
           label: "打开文件所在位置",
           onClick: (ev: React.MouseEvent) => {
             ev.stopPropagation();
-            tauriApi.launchApp('explorer.exe', ['/select,', targetPath], false);
+            platform.launchApp('explorer.exe', ['/select,', targetPath], false);
           }
         });
       }

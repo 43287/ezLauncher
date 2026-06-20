@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { LaunchItem, SettingsConfig, SettingsSchema } from '../types';
-import { tauriApi } from '../api/tauri';
+import { platform } from '../api/platform';
 
 interface DataState {
   apps: LaunchItem[];
@@ -76,7 +76,7 @@ useDataStore.subscribe((state, prevState) => {
     appsSaveTimeout = setTimeout(async () => {
       try {
         const isPortable = localStorage.getItem('portable_mode') !== 'false';
-        await tauriApi.saveApps(isPortable, JSON.stringify(state.apps));
+        await platform.saveApps(isPortable, JSON.stringify(state.apps));
       } catch (err) {
         console.error('Failed to save apps:', err);
       }
@@ -89,7 +89,7 @@ useDataStore.subscribe((state, prevState) => {
     settingsSaveTimeout = setTimeout(async () => {
       try {
         const isPortable = localStorage.getItem('portable_mode') !== 'false';
-        await tauriApi.saveSettings(isPortable, JSON.stringify(state.settings));
+        await platform.saveSettings(isPortable, JSON.stringify(state.settings));
       } catch (err) {
         console.error('Failed to save settings:', err);
       }

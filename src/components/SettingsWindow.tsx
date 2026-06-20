@@ -128,7 +128,8 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   // 若尚未加载完毕，对应的控件会暂时展示 schema.defaultValue
 
   const renderControl = (schema: SettingSchema) => {
-    const value = settings[schema.id] !== undefined ? settings[schema.id] : schema.defaultValue;
+    const key = schema.id as keyof typeof settings;
+    const value = settings[key] !== undefined ? settings[key] : schema.defaultValue;
 
     switch (schema.type) {
       case 'switch':
@@ -138,7 +139,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
               type="checkbox"
               className="sr-only peer"
               checked={value as boolean}
-              onChange={(e) => updateSetting(schema.id, e.target.checked)}
+              onChange={(e) => updateSetting(key as any, e.target.checked as any)}
             />
             <div className="w-9 h-5 bg-black/10 dark:bg-white/10 rounded-full peer peer-checked:bg-blue-500 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400 peer-focus-visible:ring-offset-2 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-black/5 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-[16px] shadow-inner"></div>
           </label>
@@ -169,7 +170,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
             <select
               className="appearance-none pr-6 bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors cursor-pointer"
               value={value as string}
-              onChange={(e) => updateSetting(schema.id, e.target.value)}
+              onChange={(e) => updateSetting(key, e.target.value)}
             >
               {schema.options?.map((opt) => (
                 <option key={opt.value} value={opt.value} className="bg-white dark:bg-gray-800">
@@ -186,7 +187,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
         return (
           <ShortcutCatcher
             value={value as string}
-            onChange={(val) => updateSetting(schema.id, val)}
+            onChange={(val) => updateSetting(key, val)}
             defaultValue={schema.defaultValue as string}
           />
         );

@@ -30,7 +30,7 @@ export function useGridNavigation() {
         // 阻止默认行为（例如表单提交等）
         e.preventDefault();
         // 获取对应的 DOM 元素并触发双击事件来启动（为了复用 ShortcutItem 中的逻辑）
-        // 或者直接在这里调用 tauriApi.launchApp。为了保持一致性，我们在 AppGrid 层面监听 Enter 键，
+        // 或者直接在这里调用 platform.launchApp。为了保持一致性，我们在 AppGrid 层面监听 Enter 键，
         // 在 hook 里只是返回指示。因此我们在外层处理 Enter。
         return;
       }

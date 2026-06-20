@@ -4,6 +4,7 @@ import { useUIStore } from "../store/useUIStore";
 import { SettingsWindow } from "./SettingsWindow";
 import { PropertiesModal } from "./PropertiesModal";
 import { SystemAppModal } from "./SystemAppModal";
+import { LaunchItem } from "../types";
 
 export function AppModals() {
   const {
@@ -49,7 +50,7 @@ export function AppModals() {
             shortcut: null,
             categoryId: activeLeftTab,
             columnId: activeTopTab,
-          }}
+          } as LaunchItem}
           onClose={closeAddApp}
           onSave={(newApp) => {
             addApp(newApp);

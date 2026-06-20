@@ -41,14 +41,23 @@ export function useGlobalContextMenu() {
           {
             label: "添加分隔符",
             onClick: () => {
-              const newApp: LaunchItem = {
+              const newApp = {
                 id: crypto.randomUUID(),
                 name: "分隔符",
                 type: "separator",
                 shortcut: null,
                 categoryId: activeLeftTab,
                 columnId: activeTopTab,
-              };
+                url: null,
+                executablePath: null,
+                args: null,
+                cwd: null,
+                envVariables: null,
+                runAsAdmin: false,
+                inTerminal: false,
+                isDir: false,
+                iconUrl: null,
+              } as LaunchItem;
               addApp(newApp);
             },
           },

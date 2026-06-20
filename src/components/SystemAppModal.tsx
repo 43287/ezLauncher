@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { tauriApi } from "../api/tauri";
+import { platform } from "../api/platform";
 import { useDataStore } from "../store/useDataStore";
 import { useUIStore } from "../store/useUIStore";
 import { LaunchItem } from "../types";
@@ -36,7 +36,7 @@ export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
     setIsVisible(true);
 
     // 获取系统应用
-    tauriApi
+    platform
       .getSystemApps()
       .then((fetchedApps) => {
         setApps(fetchedApps);
@@ -76,7 +76,7 @@ export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
   });
 
   const handleSelectApp = (app: SystemApp) => {
-    const newApp: LaunchItem = {
+    const newApp = {
       id: Date.now().toString(),
       name: app.name,
       type: "app",
@@ -85,7 +85,14 @@ export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
       iconUrl: app.iconUrl,
       categoryId: activeLeftTab,
       columnId: activeTopTab,
-    };
+      url: null,
+      args: null,
+      cwd: null,
+      envVariables: null,
+      runAsAdmin: false,
+      inTerminal: false,
+      isDir: false,
+    } as LaunchItem;
 
     addApp(newApp);
     handleClose();

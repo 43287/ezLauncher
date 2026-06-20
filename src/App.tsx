@@ -14,7 +14,7 @@ import { useWheelNavigation } from "./hooks/useWheelNavigation";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useGlobalContextMenu } from "./hooks/useGlobalContextMenu";
 import { DragDropProvider } from "./components/providers/DragDropProvider";
-import { tauriApi } from "./api/tauri";
+import { platform } from "./api/platform";
 import "./App.css";
 
 function App() {
@@ -50,13 +50,13 @@ function App() {
         const portableFlag = localStorage.getItem('portable_mode') !== 'false';
         
         // 1. 尝试加载并解析 Settings
-        const settingsJsonStr = await tauriApi.loadSettings(portableFlag);
+        const settingsJsonStr = await platform.loadSettings(portableFlag);
         const parsedSettings = JSON.parse(settingsJsonStr);
         // 通过 useDataStore 的默认合并机制自动兼容新增字段
         if (isMounted) setSettings({ ...settings, ...parsedSettings });
 
         // 2. 尝试加载并解析 Apps
-        const appsJsonStr = await tauriApi.loadApps(portableFlag);
+        const appsJsonStr = await platform.loadApps(portableFlag);
         const parsedApps = JSON.parse(appsJsonStr);
         if (isMounted) setApps(parsedApps);
 
@@ -85,7 +85,7 @@ function App() {
   const handleRestoreBackup = async () => {
     try {
       const portableFlag = localStorage.getItem('portable_mode') !== 'false';
-      await tauriApi.restoreFromBackup(portableFlag);
+      await platform.restoreFromBackup(portableFlag);
       window.location.reload(); // 重载页面以重新触发初始化流程
     } catch (err) {
       alert("恢复失败：" + err);
@@ -119,14 +119,14 @@ function App() {
 
   useEffect(() => {
     if (isLoaded) {
-      tauriApi.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch(console.error);
+      platform.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch(console.error);
     }
   }, [isLoaded, totalWindowWidth, settings.dockPosition]);
 
   // 当窗口首次可见时，确保调用一次 updateWindowWidth 来调整到最新设置的位置
   useEffect(() => {
     if (isVisible && isLoaded) {
-        tauriApi.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch(console.error);
+        platform.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch(console.error);
     }
   }, [isVisible, isLoaded]);
 

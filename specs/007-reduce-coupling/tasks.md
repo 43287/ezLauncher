@@ -14,8 +14,8 @@ description: "Task list for decoupling frontend UI from Tauri API and business l
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create `src/api/platform/` directory
-- [ ] T002 Create `src/services/` directory
+- [x] T001 Create `src/api/platform/` directory
+- [x] T002 Create `src/services/` directory
 
 ---
 
@@ -23,10 +23,10 @@ description: "Task list for decoupling frontend UI from Tauri API and business l
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
-- [ ] T003 Create `LaunchContext` interface in `src/types/LaunchContext.ts` or append to existing types file.
-- [ ] T004 Create `IPlatform` interface in `src/api/platform/IPlatform.ts`
-- [ ] T005 Implement `TauriAdapter` class implementing `IPlatform` in `src/api/platform/TauriAdapter.ts`
-- [ ] T006 Export singleton platform adapter from `src/api/platform/index.ts`
+- [x] T003 Create `LaunchContext` interface in `src/types/LaunchContext.ts` or append to existing types file.
+- [x] T004 Create `IPlatform` interface in `src/api/platform/IPlatform.ts`
+- [x] T005 Implement `TauriAdapter` class implementing `IPlatform` in `src/api/platform/TauriAdapter.ts`
+- [x] T006 Export singleton platform adapter from `src/api/platform/index.ts`
 
 **Checkpoint**: Foundation ready - Platform abstraction is available for services and components to consume.
 
@@ -59,10 +59,10 @@ description: "Task list for decoupling frontend UI from Tauri API and business l
 
 ### Implementation for User Story 2
 
-- [ ] T013 [P] [US2] Update `useDataStore` or `App.tsx` (where initialization happens) to use the new platform abstraction for `loadSettings` and `loadApps`.
-- [ ] T014 [P] [US2] Update `tauri.ts` or directly replace usages of `tauriApi.saveSettings` / `tauriApi.saveApps` in frontend components to use the platform abstraction.
-- [ ] T015 [US2] Update any remaining direct `tauriApi` calls in React hooks (e.g., window resizing logic in `App.tsx`) to use the platform abstraction.
-- [ ] T016 [US2] Deprecate or remove `src/api/tauri.ts` if all its functions have been successfully migrated to the `TauriAdapter`.
+- [x] T013 [P] [US2] Update `useDataStore` or `App.tsx` (where initialization happens) to use the new platform abstraction for `loadSettings` and `loadApps`.
+- [x] T014 [P] [US2] Update `tauri.ts` or directly replace usages of `tauriApi.saveSettings` / `tauriApi.saveApps` in frontend components to use the platform abstraction.
+- [x] T015 [US2] Update any remaining direct `tauriApi` calls in React hooks (e.g., window resizing logic in `App.tsx`) to use the platform abstraction.
+- [x] T016 [US2] Deprecate or remove `src/api/tauri.ts` if all its functions have been successfully migrated to the `TauriAdapter`.
 
 **Checkpoint**: At this point, the React tree is fully decoupled from Tauri APIs.
 
@@ -72,8 +72,8 @@ description: "Task list for decoupling frontend UI from Tauri API and business l
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T017 Code cleanup: remove unused imports in `ShortcutItem.tsx` and other refactored files.
-- [ ] T018 Run quickstart.md validation to ensure all features still work as expected.
+- [x] T017 Code cleanup: remove unused imports in `ShortcutItem.tsx` and other refactored files.
+- [x] T018 Run quickstart.md validation to ensure all features still work as expected.
 
 ---
 

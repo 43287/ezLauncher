@@ -8,6 +8,7 @@ export type Tab = RustTab;
 export type LaunchItem = RustLaunchItem;
 
 export type SettingsConfig = RustSettingsConfig;
+export * from './LaunchContext';
 
 // 由于 Zod 主要用于运行时校验（特别是防御无效的 JSON 文件或合并默认值），
 // 我们可以基于自动生成的接口类型来定义 Zod Schema，从而保持两端的契约安全。
