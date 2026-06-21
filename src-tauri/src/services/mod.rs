@@ -5,4 +5,6 @@ pub mod proxy_server;
 pub mod crypto_service;
 pub mod icon_service;
 pub mod store_service;
+pub mod portable_service;
+pub mod window_service;
 pub mod os;

@@ -12,17 +12,13 @@ pub trait ExecutionServiceTrait: Send + Sync {
     fn relaunch_as_admin(&self) -> Result<(), ServiceError>;
 }
 
-pub struct ExecutionService;
-
-impl Default for ExecutionService {
-    fn default() -> Self {
-        Self::new()
-    }
+pub struct ExecutionService {
+    proxy: Arc<dyn crate::services::proxy_server::ProxyServiceTrait>,
 }
 
 impl ExecutionService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(proxy: Arc<dyn crate::services::proxy_server::ProxyServiceTrait>) -> Self {
+        Self { proxy }
     }
 }
 
@@ -66,7 +62,7 @@ impl ExecutionServiceTrait for ExecutionService {
         }
             
         if run_as_admin {
-            crate::services::proxy_server::request_admin_launch(&final_path, final_args, final_cwd, envs)
+            self.proxy.request_admin_launch(&final_path, final_args, final_cwd, envs)
         } else {
             crate::services::os::windows::launch_app_windows(&final_path, final_args, final_cwd, envs)
         }
@@ -122,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_launch_app_invalid_path() {
-        let service = ExecutionService::new();
+        let service = ExecutionService::new(Arc::new(crate::services::proxy_server::ProxyService::new()));
         let result = service.launch_app("invalid_executable_path_12345.exe", None, false, None, None);
         // 对于 Windows 下使用 ShellExecuteW 的情况，可能返回 err。此处仅作调用测试
         assert!(result.is_err(), "Launch app should fail with invalid path");

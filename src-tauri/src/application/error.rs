@@ -13,11 +13,8 @@ pub enum AppError {
     #[error("Tauri Error: {0}")]
     Tauri(#[from] tauri::Error),
 
-    #[error("Execution Error: {0}")]
-    Execution(String),
-
     #[error("Service Error: {0}")]
-    Service(ServiceError),
+    Service(#[from] ServiceError),
 
     #[error("Other Error: {0}")]
     Other(String),
@@ -35,7 +32,6 @@ impl Serialize for AppError {
             AppError::Io(_) => "IO_ERROR",
             AppError::Crypto(_) => "CRYPTO_ERROR",
             AppError::Tauri(_) => "TAURI_ERROR",
-            AppError::Execution(_) => "EXECUTION_ERROR",
             AppError::Service(ref se) => match se {
                 ServiceError::Io(_) => "IO_ERROR",
                 ServiceError::Serialization(_) => "SERIALIZATION_ERROR",
@@ -43,7 +39,8 @@ impl Serialize for AppError {
                 ServiceError::Proxy(_) => "PROXY_ERROR",
                 ServiceError::Concurrency(_) => "CONCURRENCY_ERROR",
                 ServiceError::Crypto(_) => "CRYPTO_ERROR",
-                ServiceError::Launch(_) => "LAUNCH_ERROR",
+                // Launch 统一映射为 EXECUTION_ERROR，保持对外编码单一（消除原 From 中 Launch→Execution 的重复路径）
+                ServiceError::Launch(_) => "EXECUTION_ERROR",
                 ServiceError::Internal(_) => "INTERNAL_ERROR",
                 ServiceError::Parse(_) => "PARSE_ERROR",
             },
@@ -70,14 +67,5 @@ impl From<&str> for AppError {
     }
 }
 
-// 映射 ServiceError 的特定变体到 AppError
-impl From<ServiceError> for AppError {
-    fn from(err: ServiceError) -> Self {
-        match err {
-            ServiceError::Io(e) => AppError::Io(e),
-            ServiceError::Crypto(s) => AppError::Crypto(s),
-            ServiceError::Launch(s) => AppError::Execution(s),
-            other => AppError::Service(other),
-        }
-    }
-}
+// ServiceError → AppError 由 #[from] 自动转换（见 Service 变体），无需手工逐变体映射。
+// 对外错误编码统一在 Serialize 实现中按 ServiceError 变体确定。

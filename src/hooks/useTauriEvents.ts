@@ -124,7 +124,7 @@ export function useTauriEvents(setIsVisible: React.Dispatch<React.SetStateAction
     return () => {
       isActive = false;
       if (currentShortcutRef.current) {
-        platform.unregisterAllShortcuts().catch((e: any) => {
+        platform.unregisterAllShortcuts().catch((e: unknown) => {
           console.error("Failed to unregister shortcut on cleanup:", e);
         });
         currentShortcutRef.current = null;

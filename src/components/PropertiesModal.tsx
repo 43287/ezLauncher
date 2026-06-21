@@ -5,6 +5,7 @@ import * as LucideIcons from "lucide-react";
 import { LaunchItem } from "../types";
 import { ShortcutCatcher } from "./ShortcutCatcher";
 import { resolveIcon } from "../utils/icons";
+import { inferInterpreter, deriveNameFromPath, normalizeAppForSave } from "../utils/appTransform";
 import { IconPickerModal } from "./IconPickerModal";
 
 export function cn(...inputs: ClassValue[]) {
@@ -132,58 +133,35 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
 
   const handleScriptPathChange = (path: string) => {
     setScriptPath(path);
-    // 尝试自动匹配执行器
+    // 尝试自动匹配执行器（纯逻辑：inferInterpreter）
     if (!executorPath) {
-      const lowerPath = path.toLowerCase();
-      if (lowerPath.endsWith('.py')) {
-        setExecutorPath('python.exe');
-      } else if (lowerPath.endsWith('.js')) {
-        setExecutorPath('node.exe');
-      } else if (lowerPath.endsWith('.bat') || lowerPath.endsWith('.cmd')) {
-        setExecutorPath('cmd.exe');
-      } else if (lowerPath.endsWith('.ps1')) {
-        setExecutorPath('powershell.exe');
-      } else if (lowerPath.endsWith('.sh')) {
-        setExecutorPath('bash.exe');
-      } else if (lowerPath.endsWith('.lua')) {
-        setExecutorPath('lua.exe');
-      }
+      const interp = inferInterpreter(path);
+      if (interp) setExecutorPath(interp);
     }
-    // 尝试自动填充名称
+    // 尝试自动填充名称（纯逻辑：deriveNameFromPath）
     if (!name && path) {
-      const match = path.match(/[^\\/]+$/);
-      if (match) {
-        setName(match[0].replace(/\.[^/.]+$/, ""));
-      }
+      const derived = deriveNameFromPath(path);
+      if (derived) setName(derived);
     }
   };
 
   const handleSave = () => {
-    const finalApp = {
-      ...app,
+    const finalApp = normalizeAppForSave(app, {
       name,
-      shortcut: shortcut || null,
+      shortcut,
       iconUrl,
       cwd,
       envVariables,
       runAsAdmin,
-    };
-
-    if (app.type === 'script') {
-      finalApp.executablePath = executorPath;
-      finalApp.args = scriptPath;
-      if (!finalApp.cwd) {
-        finalApp.cwd = "{target_path}"; // 默认起始位置为目标路径
-      }
-    } else if (app.type === 'command') {
-      finalApp.executablePath = shell;
-      finalApp.args = commandText;
-      finalApp.inTerminal = inTerminal;
-    } else {
-      finalApp.executablePath = executablePath;
-      finalApp.url = url;
-      finalApp.args = args;
-    }
+      executablePath,
+      url,
+      args,
+      scriptPath,
+      executorPath,
+      commandText,
+      shell,
+      inTerminal,
+    });
 
     onSave(finalApp);
     handleClose();

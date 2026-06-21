@@ -4,6 +4,10 @@ export interface IPlatform {
     loadApps(portable: boolean): Promise<string>;
     saveApps(portable: boolean, appsJson: string): Promise<void>;
     restoreFromBackup(portable: boolean): Promise<void>;
+    getPortableMode(): Promise<boolean>;
+    setPortableMode(enabled: boolean): Promise<void>;
+    ensurePortableRecord(): Promise<void>;
+    getStoreInitInfo(portable: boolean): Promise<{ settingsExists: boolean; appsExists: boolean; hasRecord: boolean }>;
     updateWindowWidth(width: number, isLeftDock: boolean): Promise<void>;
     launchApp(
         executablePath: string,

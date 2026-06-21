@@ -46,13 +46,10 @@ pub fn scan_system_apps() -> Result<Arc<Vec<SystemApp>>, ServiceError> {
                 if ext_lower == "exe" || ext_lower == "msc" {
                     if let Some(name) = file_path.file_stem().and_then(|n| n.to_str()) {
                         let path_str = file_path.to_string_lossy().to_string();
-                        
-                        // 预解析图标以缓存
-                        let path_str_clone = path_str.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = crate::services::icon_service::get_icon_data(&path_str_clone).await;
-                        });
-                        
+
+                        // 图标预取已移至 get_system_apps 命令层（使用注入的 IconService 暖缓存），
+                        // 此处不再直接调用 icon_service 自由函数（解耦）。
+
                         let icon_url = path_str.clone();
                         
                         apps.push(SystemApp {

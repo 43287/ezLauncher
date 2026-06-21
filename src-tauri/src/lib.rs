@@ -1,33 +1,19 @@
 
 
 
-use tauri::Emitter;
+use tauri::Manager;
 
 pub mod domain;
 pub mod services;
 pub mod application;
 pub mod ui;
 
-pub fn trigger_hide_animation(window: &tauri::WebviewWindow) {
-    let _ = window.emit(crate::application::events::FORCE_HIDE_ANIMATION, ());
-    let win_clone = window.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
-        let _ = win_clone.hide();
-    });
-}
-
-pub fn trigger_show_animation(window: &tauri::WebviewWindow) {
-    let _ = window.show();
-    let _ = window.set_focus(); // 确保强制夺取焦点
-    let _ = window.emit(crate::application::events::FORCE_SHOW_ANIMATION, ());
-}
-
 #[tauri::command]
 fn hide_window(window: tauri::WebviewWindow) {
     // 也要同步更新 AtomicBool 状态，因为这是前端主动发起的隐藏（比如逃生舱或者失去焦点）
-    crate::services::hotkey_service::set_visible(false);
-    trigger_hide_animation(&window);
+    // 经由 window_service 协调者，不在 crate 根定义动画（消除反向依赖）
+    crate::services::window_service::set_visible(false);
+    crate::services::window_service::trigger_hide_animation(&window);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -40,17 +26,22 @@ pub fn run() {
         use windows::core::PCWSTR;
         use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONWARNING};
 
-        let mutex_name = U16CString::from_str("Global\\ezLauncher_SingleInstance_Mutex").unwrap();
-        unsafe {
-            let _mutex = CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr()));
-            if GetLastError() == ERROR_ALREADY_EXISTS {
-                // 如果发现已经有实例在运行，并且当前启动不是作为 admin-proxy 启动（即用户双击本体），则弹窗并退出
-                let args: Vec<String> = std::env::args().collect();
-                if !args.contains(&"--admin-proxy".to_string()) {
-                    let msg = U16CString::from_str("ezLauncher 已经在运行中。").unwrap();
-                    let title = U16CString::from_str("提示").unwrap();
-                    MessageBoxW(None, PCWSTR(msg.as_ptr()), PCWSTR(title.as_ptr()), MB_OK | MB_ICONWARNING);
-                    std::process::exit(0);
+        // 以 if let 取代 unwrap：字符串字面量转换理论上不会失败，万一失败也只跳过单实例守卫而非 panic
+        if let Ok(mutex_name) = U16CString::from_str("Global\\ezLauncher_SingleInstance_Mutex") {
+            unsafe {
+                let _mutex = CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr()));
+                if GetLastError() == ERROR_ALREADY_EXISTS {
+                    // 如果发现已经有实例在运行，并且当前启动不是作为 admin-proxy 启动（即用户双击本体），则弹窗并退出
+                    let args: Vec<String> = std::env::args().collect();
+                    if !args.contains(&"--admin-proxy".to_string()) {
+                        if let (Ok(msg), Ok(title)) = (
+                            U16CString::from_str("ezLauncher 已经在运行中。"),
+                            U16CString::from_str("提示"),
+                        ) {
+                            MessageBoxW(None, PCWSTR(msg.as_ptr()), PCWSTR(title.as_ptr()), MB_OK | MB_ICONWARNING);
+                        }
+                        std::process::exit(0);
+                    }
                 }
             }
         }
@@ -78,23 +69,42 @@ pub fn run() {
     }
 
     crate::services::proxy_server::init_main_listener();
+
+    // 统一依赖装配：所有服务以一致方式构造为 Arc<dyn _> 注入（FR-010）。
+    // ExecutionService 经构造函数注入 ProxyService（服务间依赖经抽象）。
+    let proxy_service: std::sync::Arc<dyn crate::services::proxy_server::ProxyServiceTrait> =
+        std::sync::Arc::new(crate::services::proxy_server::ProxyService::new());
+    let execution_service: std::sync::Arc<dyn crate::services::execution_service::ExecutionServiceTrait> =
+        std::sync::Arc::new(crate::services::execution_service::ExecutionService::new(proxy_service.clone()));
+    let icon_service: std::sync::Arc<dyn crate::services::icon_service::IconServiceTrait> =
+        std::sync::Arc::new(crate::services::icon_service::IconService::new());
+
     let builder = tauri::Builder::default();
 
-
-
     builder
-        .manage(std::sync::Arc::new(crate::services::execution_service::ExecutionService::new()) as std::sync::Arc<dyn crate::services::execution_service::ExecutionServiceTrait>)
+        .manage(execution_service)
+        .manage(proxy_service)
+        .manage(icon_service)
         .manage(std::sync::Arc::new(crate::services::crypto_service::CryptoService::new()) as std::sync::Arc<dyn crate::services::crypto_service::CryptoServiceTrait>)
         .manage(std::sync::Arc::new(crate::services::store_service::StoreService::new()) as std::sync::Arc<dyn crate::services::store_service::StoreServiceTrait>)
-        .register_asynchronous_uri_scheme_protocol("ezicon", |_app, request, responder| {
+        .manage(std::sync::Arc::new(crate::services::portable_service::PortableService::new()) as std::sync::Arc<dyn crate::services::portable_service::PortableServiceTrait>)
+        .manage(std::sync::Arc::new(crate::services::hotkey_service::HotkeyService::new()) as std::sync::Arc<dyn crate::services::hotkey_service::HotkeyServiceTrait>)
+        .register_asynchronous_uri_scheme_protocol("ezicon", |app, request, responder| {
             let uri_str = request.uri().to_string();
             tracing::info!("ezicon request: {}", uri_str);
             let path_str = request.uri().path().strip_prefix('/').unwrap_or(request.uri().path());
             let decoded_path = percent_encoding::percent_decode_str(path_str).decode_utf8_lossy().to_string();
             tracing::info!("ezicon decoded path: {}", decoded_path);
-            
+
+            // 从托管状态解析图标服务（经实例缓存），不再调用自由函数
+            let icon_service = app
+                .app_handle()
+                .state::<std::sync::Arc<dyn crate::services::icon_service::IconServiceTrait>>()
+                .inner()
+                .clone();
+
             tauri::async_runtime::spawn(async move {
-                match crate::services::icon_service::get_icon_data(&decoded_path).await {
+                match icon_service.get_icon_data(&decoded_path).await {
                     Ok(icon_data) => {
                         let response = tauri::http::Response::builder()
                             .header("Access-Control-Allow-Origin", "*")
@@ -130,6 +140,10 @@ pub fn run() {
             application::commands::store_cmds::load_apps,
             application::commands::store_cmds::save_apps,
             application::commands::store_cmds::restore_from_backup,
+            application::commands::store_cmds::get_portable_mode,
+            application::commands::store_cmds::set_portable_mode,
+            application::commands::store_cmds::get_store_init_info,
+            application::commands::store_cmds::ensure_portable_record,
             application::commands::hotkey_cmds::register_shortcut,
             application::commands::hotkey_cmds::unregister_all_shortcuts,
             crate::services::icon_service::copy_custom_icon,

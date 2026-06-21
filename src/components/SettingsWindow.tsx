@@ -1,68 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useDataStore } from '../store/useDataStore';
-import { SettingSchema } from '../types';
+import { SettingSchema, SettingType } from '../types';
 import { ShortcutCatcher } from './ShortcutCatcher';
-
-const SETTINGS_SCHEMA: SettingSchema[] = [
-  {
-    id: 'summonShortcut',
-    category: '快捷键管理',
-    label: '键盘呼出',
-    description: '全局键盘快捷键，用于快速唤醒 ezLaunch 面板',
-    type: 'shortcut',
-    defaultValue: 'Alt+Space',
-  },
-  {
-    id: 'summonMouseShortcut',
-    category: '快捷键管理',
-    label: '鼠标呼出',
-    description: '全局鼠标快捷键，用于快速唤醒 ezLaunch 面板',
-    type: 'shortcut',
-    defaultValue: 'Mouse4',
-  },
-  {
-    id: 'autoStart',
-    category: '通用',
-    label: '开机自启',
-    description: '随系统启动时自动运行',
-    type: 'switch',
-    defaultValue: false,
-  },
-  {
-    id: 'dockPosition',
-    category: '通用',
-    label: '侧边停靠',
-    description: '选择主窗口贴靠在屏幕的哪一边',
-    type: 'select',
-    options: [
-      { label: '靠右', value: 'right' },
-      { label: '靠左', value: 'left' },
-    ],
-    defaultValue: 'right',
-  },
-  {
-    id: 'theme',
-    category: '外观',
-    label: '主题模式',
-    description: '选择应用外观',
-    type: 'select',
-    options: [
-      { label: '跟随系统', value: 'system' },
-      { label: '浅色', value: 'light' },
-      { label: '深色', value: 'dark' },
-    ],
-    defaultValue: 'system',
-  },
-  {
-    id: 'columns',
-    category: '外观',
-    label: '网格列数',
-    description: '主界面应用列表的列数 (1-12)',
-    type: 'input',
-    defaultValue: '4',
-  }
-];
+import { platform } from '../api/platform';
+import { SETTINGS_SCHEMA } from '../constants/settingsSchema';
 
 interface SettingsWindowProps {
   onClose: () => void;
@@ -79,7 +21,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
       category: '快捷键管理',
       label: `启动 ${app.name}`,
       description: `用于快速启动 ${app.name}`,
-      type: 'readonly_shortcut' as any,
+      type: 'readonly_shortcut' as SettingType,
       defaultValue: app.shortcut,
       appId: app.id
     }));
@@ -99,10 +41,33 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const [isClosing, setIsClosing] = useState(false);
   const [tooltipData, setTooltipData] = useState<{ text: string; x: number; y: number } | null>(null);
 
+  // 便携模式开关：状态来自注册表（不在 settings 数据内）
+  const [portable, setPortable] = useState(true);
+  const [portableBusy, setPortableBusy] = useState(false);
+
   useEffect(() => {
     const timer = requestAnimationFrame(() => setIsVisible(true));
     return () => cancelAnimationFrame(timer);
   }, []);
+
+  useEffect(() => {
+    platform.getPortableMode().then(setPortable).catch(() => { /* 读失败保持默认便携 */ });
+  }, []);
+
+  // 切换便携模式：写注册表并迁移数据（迁移前已备份），随后重载以读取新位置
+  const handleTogglePortable = async () => {
+    if (portableBusy) return;
+    const next = !portable;
+    setPortableBusy(true);
+    try {
+      await platform.setPortableMode(next);
+      setPortable(next);
+      window.location.reload();
+    } catch (err) {
+      alert('切换便携模式失败：' + err);
+      setPortableBusy(false);
+    }
+  };
 
   const handleClose = () => {
     setIsClosing(true);
@@ -272,7 +237,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
                         <div className="flex items-center space-x-1">
                           <div className="text-gray-900 dark:text-gray-100 font-medium text-xs whitespace-nowrap">{schema.label}</div>
                           {schema.description && (
-                            <div 
+                            <div
                               className="relative flex items-center"
                               onMouseEnter={(e) => handleMouseEnter(e, schema.description!)}
                               onMouseLeave={handleMouseLeave}
@@ -288,6 +253,34 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
                         </div>
                       </div>
                     ))}
+                    {category === '通用' && (
+                      <div className="flex justify-between items-center bg-black/5 dark:bg-white/5 px-3 h-11 rounded-md">
+                        <div className="flex items-center space-x-1">
+                          <div className="text-gray-900 dark:text-gray-100 font-medium text-xs whitespace-nowrap">便携模式</div>
+                          <div
+                            className="relative flex items-center"
+                            onMouseEnter={(e) => handleMouseEnter(e, '开启：数据保存在程序所在目录（绿色便携，整文件夹可拷走）。关闭：数据保存在系统用户目录（更新换位置不丢失）。切换会自动迁移数据并备份。')}
+                            onMouseLeave={handleMouseLeave}
+                          >
+                            <div className="w-3.5 h-3.5 rounded-full border border-gray-400 text-gray-500 dark:border-gray-500 dark:text-gray-400 flex items-center justify-center text-[9px] font-bold cursor-help ml-1">
+                              ?
+                            </div>
+                          </div>
+                        </div>
+                        <div className="ml-4 flex-shrink-0 flex items-center">
+                          <label className={`relative inline-flex items-center ${portableBusy ? 'cursor-wait opacity-60' : 'cursor-pointer'}`}>
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={portable}
+                              disabled={portableBusy}
+                              onChange={handleTogglePortable}
+                            />
+                            <div className="w-9 h-5 bg-black/10 dark:bg-white/10 rounded-full peer peer-checked:bg-blue-500 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400 peer-focus-visible:ring-offset-2 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-black/5 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-[16px] shadow-inner"></div>
+                          </label>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

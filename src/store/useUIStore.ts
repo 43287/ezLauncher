@@ -28,26 +28,16 @@ export const useUIStore = create<UIState>((set, get) => ({
   setActiveLeftTab: (id) => {
     const state = get();
     const dataStore = useDataStore.getState();
-    const topTabs = dataStore.settings.topTabs || {};
-    
-    const oldTabs = topTabs[state.activeLeftTab] || [];
-    const targetIndex = oldTabs.findIndex((t: any) => t.id === state.activeTopTab);
+
+    // 经 DataStore 公开 action 访问顶部标签，不直读/回写 settings.topTabs 内部结构（FR-009）
+    const oldTabs = dataStore.getTopTabsFor(state.activeLeftTab);
+    const targetIndex = oldTabs.findIndex((t) => t.id === state.activeTopTab);
     const resolvedIndex = targetIndex >= 0 ? targetIndex : 0;
 
-    let newTabs = topTabs[id] || [];
-
-    if (newTabs.length === 0) {
-      newTabs = [
-        { id: crypto.randomUUID(), name: 'Tab 1' },
-        { id: crypto.randomUUID(), name: 'Tab 2' },
-        { id: crypto.randomUUID(), name: 'Tab 3' },
-        { id: crypto.randomUUID(), name: 'Tab 4' }
-      ];
-      dataStore.updateSetting('topTabs', { ...topTabs, [id]: newTabs });
-    }
+    const newTabs = dataStore.ensureTopTabsFor(id);
 
     const finalIndex = Math.min(resolvedIndex, newTabs.length - 1);
-    set({ 
+    set({
       activeLeftTab: id,
       activeTopTab: newTabs[finalIndex]?.id || ''
     });

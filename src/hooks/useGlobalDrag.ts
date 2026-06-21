@@ -6,6 +6,7 @@ import { useDataStore } from "../store/useDataStore";
 import { useUIStore } from "../store/useUIStore";
 import { LaunchService } from "../services/LaunchService";
 import { getIconForExtension, getInterpreterForExtension } from "../utils/icons";
+import { generateId } from "../constants/ids";
 
 export function useGlobalDrag(
   setIsDraggingFile: (dragging: boolean) => void,
@@ -113,7 +114,7 @@ export function useGlobalDrag(
                 }
 
                 const newApp: LaunchItem = {
-                  id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                  id: generateId(),
                   name: finalName,
                   type,
                   executablePath,

@@ -1,20 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useToastStore } from "../../store/useToastStore";
 import { IPlatform } from "./IPlatform";
 
+// 基础设施适配层：仅与后端通信、失败时抛出，不依赖任何 UI（如 Toast）。
+// 用户提示由调用方（如 useDataStore 持久化协调）决定（FR-008）。
 export class TauriAdapter implements IPlatform {
     async loadSettings(portable: boolean): Promise<string> {
         return invoke<string>("load_settings", { portable });
     }
 
     async saveSettings(portable: boolean, settingsJson: string): Promise<void> {
-        try {
-            await invoke<void>("save_settings", { portable, settingsJson });
-        } catch (err: any) {
-            console.error("Failed to save settings:", err);
-            useToastStore.getState().addToast(`保存设置失败 (IO_ERROR): ${err}`, 'error');
-            throw err;
-        }
+        return invoke<void>("save_settings", { portable, settingsJson });
     }
 
     async loadApps(portable: boolean): Promise<string> {
@@ -22,17 +17,32 @@ export class TauriAdapter implements IPlatform {
     }
 
     async saveApps(portable: boolean, appsJson: string): Promise<void> {
-        try {
-            await invoke<void>("save_apps", { portable, appsJson });
-        } catch (err: any) {
-            console.error("Failed to save apps:", err);
-            useToastStore.getState().addToast(`保存应用列表失败 (IO_ERROR): ${err}`, 'error');
-            throw err;
-        }
+        return invoke<void>("save_apps", { portable, appsJson });
     }
 
     async restoreFromBackup(portable: boolean): Promise<void> {
         return invoke<void>("restore_from_backup", { portable });
+    }
+
+    async getPortableMode(): Promise<boolean> {
+        return invoke<boolean>("get_portable_mode");
+    }
+
+    async setPortableMode(enabled: boolean): Promise<void> {
+        return invoke<void>("set_portable_mode", { enabled });
+    }
+
+    async ensurePortableRecord(): Promise<void> {
+        return invoke<void>("ensure_portable_record");
+    }
+
+    async getStoreInitInfo(
+        portable: boolean,
+    ): Promise<{ settingsExists: boolean; appsExists: boolean; hasRecord: boolean }> {
+        return invoke<{ settingsExists: boolean; appsExists: boolean; hasRecord: boolean }>(
+            "get_store_init_info",
+            { portable },
+        );
     }
 
     async updateWindowWidth(width: number, isLeftDock: boolean): Promise<void> {

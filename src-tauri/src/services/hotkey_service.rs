@@ -6,11 +6,42 @@ use rdev::{grab, Event, EventType, Key, Button};
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 static REGISTERED_SHORTCUTS: OnceLock<Mutex<Vec<ShortcutConfig>>> = OnceLock::new();
-static IS_VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static RDEV_THREAD_STARTED: OnceLock<()> = OnceLock::new();
 
 // 5秒超时强制重置阈值
 const MODIFIER_TIMEOUT: Duration = Duration::from_secs(5);
+
+// 热键服务的可注入抽象（DI 接缝，供命令注入与测试替换）。
+// 说明：底层 rdev 全局键盘抓取线程与 APP_HANDLE/已注册快捷键保持进程级 static——
+// 全局输入抓取是进程级 OS 钩子，由独立后台线程持有，无法纳入按应用实例管理的状态，
+// 故由 trait 提供接缝而非搬迁全部状态（FR-010）。
+pub trait HotkeyServiceTrait: Send + Sync {
+    fn register_shortcut(&self, app_handle: &AppHandle, shortcut_str: &str) -> Result<(), crate::services::error::ServiceError>;
+    fn unregister_all_shortcuts(&self, app_handle: &AppHandle) -> Result<(), crate::services::error::ServiceError>;
+}
+
+pub struct HotkeyService;
+
+impl Default for HotkeyService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HotkeyService {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl HotkeyServiceTrait for HotkeyService {
+    fn register_shortcut(&self, app_handle: &AppHandle, shortcut_str: &str) -> Result<(), crate::services::error::ServiceError> {
+        register_shortcut(app_handle, shortcut_str)
+    }
+    fn unregister_all_shortcuts(&self, app_handle: &AppHandle) -> Result<(), crate::services::error::ServiceError> {
+        unregister_all_shortcuts(app_handle)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShortcutConfig {
@@ -174,22 +205,22 @@ fn check_trigger(modifiers: &mut ModifiersState, key: Option<Key>, button: Optio
 
             if let Some(app_handle) = APP_HANDLE.get() {
                 if let Some(window) = app_handle.get_webview_window("main") {
-                    // 我们使用 AtomicBool 来追踪可见性，完全脱离阻塞的 window 状态查询
-                    let is_visible = IS_VISIBLE.load(std::sync::atomic::Ordering::SeqCst);
+                    // 可见性与动画由 window_service 协调者统一管理（消除对 crate 根的反向依赖）
+                    let is_visible = crate::services::window_service::is_visible();
 
                     if is_visible {
                         tracing::info!("Hotkey matched: Hiding window");
-                        IS_VISIBLE.store(false, std::sync::atomic::Ordering::SeqCst);
+                        crate::services::window_service::set_visible(false);
                         let win = window.clone();
                         std::thread::spawn(move || {
-                            crate::trigger_hide_animation(&win);
+                            crate::services::window_service::trigger_hide_animation(&win);
                         });
                     } else {
                         tracing::info!("Hotkey matched: Showing window");
-                        IS_VISIBLE.store(true, std::sync::atomic::Ordering::SeqCst);
+                        crate::services::window_service::set_visible(true);
                         let win = window.clone();
                         std::thread::spawn(move || {
-                            crate::trigger_show_animation(&win);
+                            crate::services::window_service::trigger_show_animation(&win);
                         });
                     }
                 }
@@ -228,10 +259,6 @@ pub fn unregister_all_shortcuts(_app_handle: &AppHandle) -> Result<(), crate::se
     Err(crate::services::error::ServiceError::Concurrency(
         "Failed to lock registered shortcut".to_string(),
     ))
-}
-
-pub fn set_visible(visible: bool) {
-    IS_VISIBLE.store(visible, std::sync::atomic::Ordering::SeqCst);
 }
 
 pub fn parse_shortcut(shortcut_str: &str) -> Result<ShortcutConfig, crate::services::error::ServiceError> {

@@ -12,6 +12,51 @@ pub static PROXY_CONNECTION: LazyLock<Mutex<Option<LocalSocketStream>>> = LazyLo
 static PROXY_STARTING_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 pub static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
 
+// 代理服务的可注入抽象（DI 接缝，供 ExecutionService 注入与测试替换）。
+// 说明：底层 IPC 状态（命名管道连接/PIPE 名/关闭标志）保持进程级 static——
+// 它们在 run_proxy_client 子进程模式（tauri 应用初始化之前）及退出处理器中被访问，
+// 无法纳入按应用实例管理的状态，故由 trait 提供接缝而非搬迁全部状态（FR-010）。
+pub trait ProxyServiceTrait: Send + Sync {
+    fn request_admin_launch(
+        &self,
+        executable_path: &str,
+        args: Option<Vec<String>>,
+        cwd: Option<String>,
+        envs: Option<std::collections::HashMap<String, String>>,
+    ) -> Result<(), ServiceError>;
+    fn shutdown(&self) -> Result<(), ServiceError>;
+}
+
+pub struct ProxyService;
+
+impl Default for ProxyService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ProxyService {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl ProxyServiceTrait for ProxyService {
+    fn request_admin_launch(
+        &self,
+        executable_path: &str,
+        args: Option<Vec<String>>,
+        cwd: Option<String>,
+        envs: Option<std::collections::HashMap<String, String>>,
+    ) -> Result<(), ServiceError> {
+        request_admin_launch(executable_path, args, cwd, envs)
+    }
+
+    fn shutdown(&self) -> Result<(), ServiceError> {
+        shutdown_proxy()
+    }
+}
+
 pub fn send_proxy_command(path: &str, args: Option<Vec<String>>, cwd: Option<String>, envs: Option<std::collections::HashMap<String, String>>) -> Result<(), ServiceError> {
     let mut guard = PROXY_CONNECTION.lock().map_err(|_| ServiceError::Concurrency("Proxy connection mutex poisoned".to_string()))?;
     if let Some(stream) = guard.as_mut() {
@@ -93,13 +138,19 @@ pub fn request_admin_launch(executable_path: &str, args: Option<Vec<String>>, cw
             let pipe_name = MAIN_PIPE_NAME.as_str();
             let pid = std::process::id();
             let args_str = format!("--admin-proxy {} {}", pid, pipe_name);
-            let args_u16 = U16CString::from_str(&args_str).unwrap();
+            // 绑定到变量避免临时值过早释放（原内联 .as_ptr() 存在悬垂隐患），并以 ? 取代 unwrap 防 panic
+            let args_u16 = U16CString::from_str(&args_str)
+                .map_err(|e| ServiceError::Internal(format!("Invalid args string: {}", e)))?;
+            let verb_u16 = U16CString::from_str("runas")
+                .map_err(|e| ServiceError::Internal(format!("Invalid verb string: {}", e)))?;
+            let exe_u16 = U16CString::from_str(exe_str)
+                .map_err(|e| ServiceError::Internal(format!("Invalid exe path string: {}", e)))?;
 
             unsafe {
                 let result = ShellExecuteW(
                     None,
-                    PCWSTR(U16CString::from_str("runas").unwrap().as_ptr()),
-                    PCWSTR(U16CString::from_str(exe_str).unwrap().as_ptr()),
+                    PCWSTR(verb_u16.as_ptr()),
+                    PCWSTR(exe_u16.as_ptr()),
                     PCWSTR(args_u16.as_ptr()),
                     None,
                     SW_HIDE,

@@ -1,12 +1,14 @@
 use tauri::{command, State};
 use crate::services::execution_service::{ExecutionServiceTrait, ExtractedFileInfo};
+use crate::services::icon_service::IconServiceTrait;
 use std::sync::Arc;
 use crate::application::error::AppError;
 use crate::services::os::windows::SystemApp;
 
 #[command]
 pub async fn get_system_apps(
-    execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>
+    execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>,
+    icon_service: State<'_, Arc<dyn IconServiceTrait>>
 ) -> Result<Vec<SystemApp>, AppError> {
     let service = execution_service.inner().clone();
     let arc_apps = tauri::async_runtime::spawn_blocking(move || {
@@ -15,8 +17,20 @@ pub async fn get_system_apps(
     .await
     .map_err(|e| AppError::Other(format!("Thread join error: {}", e)))?
     .map_err(AppError::from)?;
-    
-    Ok(arc_apps.as_ref().clone())
+
+    let apps = arc_apps.as_ref().clone();
+
+    // 预取图标以暖缓存（原在 scan_system_apps 内，移至命令层以使用注入的 IconService）
+    let icon = icon_service.inner().clone();
+    for app in &apps {
+        let path = app.path.clone();
+        let icon = icon.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = icon.get_icon_data(&path).await;
+        });
+    }
+
+    Ok(apps)
 }
 
 #[command]
@@ -59,30 +73,7 @@ pub async fn update_window_width(
     is_left_dock: bool,
     window: tauri::WebviewWindow,
 ) -> Result<(), AppError> {
-    // 获取当前逻辑高度和显示器宽度
-    let scale_factor = window.scale_factor().unwrap_or(1.0);
-    let current_physical_size = window.inner_size().unwrap_or_default();
-    let current_logical_height = current_physical_size.height as f64 / scale_factor;
-
-    window.set_size(tauri::Size::Logical(tauri::LogicalSize {
-        width,
-        height: current_logical_height,
-    })).map_err(AppError::Tauri)?;
-
-    if let Ok(Some(monitor)) = window.current_monitor() {
-        let monitor_logical_size = monitor.size().to_logical::<f64>(scale_factor);
-        
-        let x_pos = if is_left_dock {
-            0.0
-        } else {
-            monitor_logical_size.width - width
-        };
-        
-        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition {
-            x: x_pos,
-            y: 0.0,
-        }));
-    }
-
+    // 窗口定位/DPI 换算逻辑下沉至 window_service，命令仅薄转发（FR-006）
+    crate::services::window_service::apply_dock_width(&window, width, is_left_dock)?;
     Ok(())
 }

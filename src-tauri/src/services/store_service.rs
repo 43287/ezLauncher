@@ -60,6 +60,36 @@ pub trait StoreServiceTrait: Send + Sync {
     ) -> Result<(), ServiceError>;
 
     fn restore_from_backup(&self, portable: bool, app_handle: &AppHandle) -> Result<(), ServiceError>;
+
+    // 返回 (settings.json 是否存在, apps.json 是否存在)，用于区分首次使用与疑似丢失
+    fn store_files_exist(&self, portable: bool, app_handle: &AppHandle) -> Result<(bool, bool), ServiceError>;
+}
+
+// 根据便携标志与基目录构造数据文件路径（不触碰运行时/文件系统），便于单元测试（FR-001 / T007）。
+// 便携：<exe目录>/data/<file>；非便携：<app_data_dir>/<file>。
+pub(crate) fn build_store_path(
+    portable: bool,
+    exe_dir: &std::path::Path,
+    app_data_dir: &std::path::Path,
+    file_name: &str,
+) -> std::path::PathBuf {
+    if portable {
+        exe_dir.join("data").join(file_name)
+    } else {
+        app_data_dir.join(file_name)
+    }
+}
+
+// 从 settings.json 文本中提取 apps 数组（历史单文件格式兼容），返回序列化后的 JSON 数组字符串。
+// 纯函数，便于单元测试（FR-004 / T008）。
+pub(crate) fn extract_apps_from_settings(settings_str: &str) -> Option<String> {
+    let val = serde_json::from_str::<serde_json::Value>(settings_str).ok()?;
+    let apps = val.get("apps")?;
+    if apps.is_array() {
+        serde_json::to_string(apps).ok()
+    } else {
+        None
+    }
 }
 
 pub struct StoreService;
@@ -79,19 +109,23 @@ impl StoreService {
 #[async_trait]
 impl StoreServiceTrait for StoreService {
     fn get_store_path(&self, portable: bool, app_handle: &AppHandle, file_name: &str) -> Result<String, ServiceError> {
-        if portable {
-            let mut path = std::env::current_exe()?;
-            path.pop(); // remove executable name
-            path.push("data");
-            std::fs::create_dir_all(&path)?;
-            path.push(file_name);
-            Ok(path.to_string_lossy().to_string())
+        // 解析不依赖运行时的基目录，再由纯函数 build_store_path 构造完整路径（便于测试 T007）
+        let path = if portable {
+            let mut exe = std::env::current_exe()?;
+            exe.pop(); // remove executable name -> exe 所在目录
+            build_store_path(true, &exe, std::path::Path::new(""), file_name)
         } else {
-            let mut path = app_handle.path().app_data_dir().map_err(|e| ServiceError::Internal(e.to_string()))?;
-            std::fs::create_dir_all(&path)?;
-            path.push(file_name);
-            Ok(path.to_string_lossy().to_string())
+            let app_data = app_handle
+                .path()
+                .app_data_dir()
+                .map_err(|e| ServiceError::Internal(e.to_string()))?;
+            build_store_path(false, std::path::Path::new(""), &app_data, file_name)
+        };
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
         }
+        Ok(path.to_string_lossy().to_string())
     }
 
     fn migrate_store_data(&self, to_portable: bool, app_handle: &AppHandle) -> Result<(), ServiceError> {
@@ -109,6 +143,12 @@ impl StoreServiceTrait for StoreService {
             let target_path = std::path::Path::new(&target);
 
             if source_path != target_path && source_path.exists() {
+                // 非破坏式：覆盖目标前先备份目标已有内容（FR-002 “迁移前备份”）
+                if target_path.exists() {
+                    let mut bak_path = target_path.to_path_buf();
+                    bak_path.set_extension("bak");
+                    let _ = std::fs::copy(target_path, &bak_path);
+                }
                 std::fs::copy(source_path, target_path)?;
             }
         }
@@ -235,7 +275,31 @@ impl StoreServiceTrait for StoreService {
         app_handle: &AppHandle,
         crypto_service: Arc<dyn CryptoServiceTrait>,
     ) -> Result<String, ServiceError> {
-        self.load_file(portable, "apps.json", app_handle, crypto_service).await
+        let apps_path = self.get_store_path(portable, app_handle, "apps.json")?;
+        let apps_exists = std::path::Path::new(&apps_path).exists();
+
+        let result = self
+            .load_file(portable, "apps.json", app_handle, crypto_service.clone())
+            .await?;
+
+        // 历史单文件兼容（FR-004）：独立 apps.json 不存在/为空时，
+        // 尝试从 settings.json 的 apps 字段提取，并一次性迁移为独立 apps.json。
+        let trimmed = result.trim();
+        if !apps_exists || trimmed.is_empty() || trimmed == "[]" {
+            if let Ok(settings_str) = self
+                .load_file(portable, "settings.json", app_handle, crypto_service.clone())
+                .await
+            {
+                if let Some(extracted) = extract_apps_from_settings(&settings_str) {
+                    let _ = self
+                        .save_file(portable, "apps.json", extracted.clone(), app_handle, crypto_service)
+                        .await;
+                    return Ok(extracted);
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     async fn save_apps(
@@ -260,5 +324,65 @@ impl StoreServiceTrait for StoreService {
             }
         }
         Ok(())
+    }
+
+    fn store_files_exist(&self, portable: bool, app_handle: &AppHandle) -> Result<(bool, bool), ServiceError> {
+        let settings_path = self.get_store_path(portable, app_handle, "settings.json")?;
+        let apps_path = self.get_store_path(portable, app_handle, "apps.json")?;
+        let settings_exists = std::path::Path::new(&settings_path).exists();
+        let apps_exists = std::path::Path::new(&apps_path).exists();
+        Ok((settings_exists, apps_exists))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_store_path, extract_apps_from_settings};
+    use std::path::{Path, PathBuf};
+
+    // 路径解析：便携→<exe>/data/<file>，非便携→<app_data>/<file>（FR-001 / T007）
+    #[test]
+    fn build_store_path_portable_uses_exe_data_dir() {
+        let p = build_store_path(true, Path::new("C:\\app\\bin"), Path::new("C:\\appdata"), "settings.json");
+        assert_eq!(p, PathBuf::from("C:\\app\\bin").join("data").join("settings.json"));
+    }
+
+    #[test]
+    fn build_store_path_non_portable_uses_app_data_dir() {
+        let p = build_store_path(false, Path::new("C:\\app\\bin"), Path::new("C:\\appdata"), "apps.json");
+        assert_eq!(p, PathBuf::from("C:\\appdata").join("apps.json"));
+    }
+
+    #[test]
+    fn build_store_path_differs_when_exe_moves() {
+        // exe 位置变化时，便携路径随之变化（说明便携=随 exe 走）
+        let a = build_store_path(true, Path::new("C:\\v1"), Path::new("C:\\appdata"), "apps.json");
+        let b = build_store_path(true, Path::new("C:\\v2"), Path::new("C:\\appdata"), "apps.json");
+        assert_ne!(a, b);
+        // 非便携则与 exe 无关，保持稳定
+        let c = build_store_path(false, Path::new("C:\\v1"), Path::new("C:\\appdata"), "apps.json");
+        let d = build_store_path(false, Path::new("C:\\v2"), Path::new("C:\\appdata"), "apps.json");
+        assert_eq!(c, d);
+    }
+
+    // 历史单文件格式：从 settings.json 提取 apps 数组（FR-004 / T008）
+    #[test]
+    fn extracts_apps_array_from_settings() {
+        let settings = r#"{"leftTabs":[],"apps":[{"id":"1","name":"QQ"},{"id":"2","name":"Weixin"}],"theme":"system"}"#;
+        let extracted = extract_apps_from_settings(settings).expect("应提取到 apps 数组");
+        let val: serde_json::Value = serde_json::from_str(&extracted).unwrap();
+        assert!(val.is_array());
+        assert_eq!(val.as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn returns_none_when_no_apps_field() {
+        let settings = r#"{"leftTabs":[],"theme":"system"}"#;
+        assert!(extract_apps_from_settings(settings).is_none());
+    }
+
+    #[test]
+    fn returns_none_on_invalid_json() {
+        assert!(extract_apps_from_settings("not json").is_none());
     }
 }

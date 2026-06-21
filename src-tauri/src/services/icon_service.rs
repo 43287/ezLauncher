@@ -1,12 +1,31 @@
 use dashmap::DashMap;
-use std::sync::OnceLock;
 use std::path::{Path, PathBuf};
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use crate::services::error::ServiceError;
 
-fn icon_cache() -> &'static DashMap<String, Vec<u8>> {
-    static CACHE: OnceLock<DashMap<String, Vec<u8>>> = OnceLock::new();
-    CACHE.get_or_init(DashMap::new)
+// 图标服务：内存缓存（DashMap）作为实例字段持有，经 trait 注入与管理（FR-010）。
+#[async_trait::async_trait]
+pub trait IconServiceTrait: Send + Sync {
+    async fn get_icon_data(&self, decoded_path: &str) -> Result<Vec<u8>, ServiceError>;
+}
+
+pub struct IconService {
+    cache: DashMap<String, Vec<u8>>,
+}
+
+impl Default for IconService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IconService {
+    pub fn new() -> Self {
+        Self {
+            cache: DashMap::new(),
+        }
+    }
 }
 
 fn get_cache_dir() -> PathBuf {
@@ -54,50 +73,52 @@ pub async fn copy_custom_icon(src_path: String) -> Result<String, String> {
 }
 
 #[cfg(target_os = "windows")]
-pub async fn get_icon_data(decoded_path: &str) -> Result<Vec<u8>, crate::services::error::ServiceError> {
-    if decoded_path.starts_with("custom/") {
-        let file_name = decoded_path.strip_prefix("custom/").unwrap();
-        let custom_dir = get_custom_dir();
-        let file_path = custom_dir.join(file_name);
-        if let Ok(data) = tokio::fs::read(&file_path).await {
+#[async_trait::async_trait]
+impl IconServiceTrait for IconService {
+    async fn get_icon_data(&self, decoded_path: &str) -> Result<Vec<u8>, ServiceError> {
+        if decoded_path.starts_with("custom/") {
+            let file_name = decoded_path.strip_prefix("custom/").unwrap();
+            let custom_dir = get_custom_dir();
+            let file_path = custom_dir.join(file_name);
+            if let Ok(data) = tokio::fs::read(&file_path).await {
+                return Ok(data);
+            }
+            return Err(ServiceError::Internal(format!("Custom icon not found: {}", decoded_path)));
+        }
+
+        if decoded_path.starts_with(r"\\") && !decoded_path.starts_with(r"\\?\") {
+            let err_msg = format!("UNC paths are not allowed for icon extraction: {}", decoded_path);
+            tracing::warn!("{}", err_msg);
+            return Err(ServiceError::Security(err_msg));
+        }
+
+        if let Some(cached) = self.cache.get(decoded_path) {
+            return Ok(cached.clone());
+        }
+
+        // Check disk cache
+        let mut hasher = DefaultHasher::new();
+        decoded_path.hash(&mut hasher);
+        let hash = hasher.finish();
+        let cache_file_name = format!("{:x}.png", hash);
+        let cache_dir = get_cache_dir();
+        let cache_path = cache_dir.join(&cache_file_name);
+
+        if let Ok(data) = tokio::fs::read(&cache_path).await {
+            self.cache.insert(decoded_path.to_string(), data.clone());
             return Ok(data);
         }
-        return Err(crate::services::error::ServiceError::Internal(format!("Custom icon not found: {}", decoded_path)));
-    }
 
-    if decoded_path.starts_with(r"\\") && !decoded_path.starts_with(r"\\?\") {
-        let err_msg = format!("UNC paths are not allowed for icon extraction: {}", decoded_path);
-        tracing::warn!("{}", err_msg);
-        return Err(crate::services::error::ServiceError::Security(err_msg));
-    }
+        let path_clone = decoded_path.to_string();
+        let data = tokio::task::spawn_blocking(move || {
+            extract_icon_sync(&path_clone)
+        }).await.map_err(|e| ServiceError::Internal(e.to_string()))??;
 
-    let cache = icon_cache();
-    if let Some(cached) = cache.get(decoded_path) {
-        return Ok(cached.clone());
+        self.cache.insert(decoded_path.to_string(), data.clone());
+        let _ = tokio::fs::write(&cache_path, &data).await;
+
+        Ok(data)
     }
-    
-    // Check disk cache
-    let mut hasher = DefaultHasher::new();
-    decoded_path.hash(&mut hasher);
-    let hash = hasher.finish();
-    let cache_file_name = format!("{:x}.png", hash);
-    let cache_dir = get_cache_dir();
-    let cache_path = cache_dir.join(&cache_file_name);
-    
-    if let Ok(data) = tokio::fs::read(&cache_path).await {
-        cache.insert(decoded_path.to_string(), data.clone());
-        return Ok(data);
-    }
-    
-    let path_clone = decoded_path.to_string();
-    let data = tokio::task::spawn_blocking(move || {
-        extract_icon_sync(&path_clone)
-    }).await.map_err(|e| crate::services::error::ServiceError::Internal(e.to_string()))??;
-    
-    cache.insert(decoded_path.to_string(), data.clone());
-    let _ = tokio::fs::write(&cache_path, &data).await;
-    
-    Ok(data)
 }
 
 #[cfg(target_os = "windows")]
@@ -270,6 +291,9 @@ fn hicon_to_png(hicon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Result
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_icon_data(_decoded_path: &str) -> Result<Vec<u8>, crate::services::error::ServiceError> {
-    Err(crate::services::error::ServiceError::Internal("Not supported on this OS".to_string()))
+#[async_trait::async_trait]
+impl IconServiceTrait for IconService {
+    async fn get_icon_data(&self, _decoded_path: &str) -> Result<Vec<u8>, ServiceError> {
+        Err(ServiceError::Internal("Not supported on this OS".to_string()))
+    }
 }

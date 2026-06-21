@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AppGrid } from "./components/AppGrid";
 import { CustomTitlebar } from "./components/CustomTitlebar";
-import { useDataStore } from "./store/useDataStore";
+import { useDataStore, setCachedPortable } from "./store/useDataStore";
 import { useUIStore } from "./store/useUIStore";
 import { useModalStore } from "./store/useModalStore";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -45,27 +45,52 @@ function App() {
     
     async function initializeStore() {
       if (isLoaded || showRecovery) return;
-      
+
       try {
-        const portableFlag = localStorage.getItem('portable_mode') !== 'false';
-        
-        // 1. 尝试加载并解析 Settings
+        // 0. 从注册表读取便携标志，并缓存供持久化层使用
+        const portableFlag = await platform.getPortableMode();
+        setCachedPortable(portableFlag);
+
+        // 1. 区分“全新首次使用”与“疑似数据丢失”（FR-002a/FR-003）
+        const info = await platform.getStoreInitInfo(portableFlag);
+        const suspectedLoss = portableFlag && info.hasRecord && (!info.settingsExists || !info.appsExists);
+        if (suspectedLoss) {
+          if (isMounted) {
+            setRecoveryMessage("检测到便携模式下数据文件缺失（可能因移动程序位置导致）。可尝试从备份恢复，避免数据丢失。");
+            setShowRecovery(true);
+          }
+          return; // 不静默用默认值覆盖
+        }
+
+        // 2. 尝试加载并解析 Settings
         const settingsJsonStr = await platform.loadSettings(portableFlag);
         const parsedSettings = JSON.parse(settingsJsonStr);
         // 通过 useDataStore 的默认合并机制自动兼容新增字段
         if (isMounted) setSettings({ ...settings, ...parsedSettings });
 
-        // 2. 尝试加载并解析 Apps
+        // 3. 尝试加载并解析 Apps
         const appsJsonStr = await platform.loadApps(portableFlag);
         const parsedApps = JSON.parse(appsJsonStr);
         if (isMounted) setApps(parsedApps);
 
         if (isMounted) setIsLoaded(true);
-      } catch (err: any) {
+
+        // 4. 持久化“已初始化”记录，使后续启动能检测疑似丢失（首次写入，不迁移）
+        await platform.ensurePortableRecord();
+      } catch (err: unknown) {
         console.error('Initialization failed:', err);
-        if (err.toString().includes('ParseError') || err.toString().includes('PARSE_ERROR') || err.toString().includes('SyntaxError')) {
+        // 基于后端 ApiError 契约的 code 判定，而非字符串匹配（FR-013）；
+        // JSON.parse 失败为前端 SyntaxError，一并视为解析错误。
+        const code: string | undefined =
+          err && typeof err === 'object' ? (err as { code?: string }).code : undefined;
+        const isParseError = code === 'PARSE_ERROR' || err instanceof SyntaxError;
+        if (isParseError) {
           if (isMounted) {
-            setRecoveryMessage(err.toString());
+            const message =
+              err && typeof err === 'object' && 'message' in err
+                ? String((err as { message?: string }).message)
+                : String(err);
+            setRecoveryMessage(message);
             setShowRecovery(true);
           }
         } else {
@@ -84,7 +109,7 @@ function App() {
 
   const handleRestoreBackup = async () => {
     try {
-      const portableFlag = localStorage.getItem('portable_mode') !== 'false';
+      const portableFlag = await platform.getPortableMode();
       await platform.restoreFromBackup(portableFlag);
       window.location.reload(); // 重载页面以重新触发初始化流程
     } catch (err) {

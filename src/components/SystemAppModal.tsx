@@ -6,6 +6,7 @@ import { platform } from "../api/platform";
 import { useDataStore } from "../store/useDataStore";
 import { useUIStore } from "../store/useUIStore";
 import { LaunchItem } from "../types";
+import { resolveIcon } from "../utils/icons";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -172,7 +173,7 @@ export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
                       <div className="w-8 h-8 flex-shrink-0 bg-black/5 dark:bg-white/5 rounded-md flex items-center justify-center overflow-hidden">
                         {app.iconUrl ? (
                           <img
-                            src={app.iconUrl}
+                            src={resolveIcon(app.iconUrl)?.content ?? ""}
                             alt={app.name}
                             className="w-6 h-6 object-contain"
                             onError={(e) => {

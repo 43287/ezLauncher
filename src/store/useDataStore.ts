@@ -1,6 +1,15 @@
 import { create } from 'zustand';
-import { LaunchItem, SettingsConfig, SettingsSchema } from '../types';
+import { LaunchItem, SettingsConfig, SettingsSchema, Tab } from '../types';
 import { platform } from '../api/platform';
+import { useToastStore } from './useToastStore';
+import { PERSIST_DEBOUNCE_MS } from '../constants/storage';
+import { generateId } from '../constants/ids';
+
+// 便携标志缓存：由启动流程从注册表读取后写入，持久化订阅同步读取此值（取代 localStorage）
+let cachedPortable = true;
+export const setCachedPortable = (portable: boolean) => {
+  cachedPortable = portable;
+};
 
 interface DataState {
   apps: LaunchItem[];
@@ -16,9 +25,13 @@ interface DataState {
   addApp: (newApp: LaunchItem) => void;
   removeApp: (id: string) => void;
   updateApp: (id: string, updates: Partial<LaunchItem>) => void;
+
+  // 顶部标签读取/按需初始化（供 UIStore 调用，避免其直读 settings.topTabs 内部结构）
+  getTopTabsFor: (categoryId: string) => Tab[];
+  ensureTopTabsFor: (categoryId: string) => Tab[];
 }
 
-export const useDataStore = create<DataState>((set) => ({
+export const useDataStore = create<DataState>((set, get) => ({
   apps: [],
   settings: SettingsSchema.parse({}) as SettingsConfig, // default settings
   isLoaded: false,
@@ -61,6 +74,28 @@ export const useDataStore = create<DataState>((set) => ({
       return { apps: newApps };
     });
   },
+
+  getTopTabsFor: (categoryId) => {
+    const topTabs = get().settings.topTabs || {};
+    return topTabs[categoryId] || [];
+  },
+
+  ensureTopTabsFor: (categoryId) => {
+    const state = get();
+    const topTabs = state.settings.topTabs || {};
+    const existing = topTabs[categoryId];
+    if (existing && existing.length > 0) {
+      return existing;
+    }
+    const newTabs: Tab[] = [
+      { id: generateId(), name: 'Tab 1' },
+      { id: generateId(), name: 'Tab 2' },
+      { id: generateId(), name: 'Tab 3' },
+      { id: generateId(), name: 'Tab 4' },
+    ];
+    set({ settings: { ...state.settings, topTabs: { ...topTabs, [categoryId]: newTabs } } });
+    return newTabs;
+  },
 }));
 
 // Setup persistence subscriptions
@@ -75,12 +110,12 @@ useDataStore.subscribe((state, prevState) => {
     if (appsSaveTimeout) clearTimeout(appsSaveTimeout);
     appsSaveTimeout = setTimeout(async () => {
       try {
-        const isPortable = localStorage.getItem('portable_mode') !== 'false';
-        await platform.saveApps(isPortable, JSON.stringify(state.apps));
+        await platform.saveApps(cachedPortable, JSON.stringify(state.apps));
       } catch (err) {
         console.error('Failed to save apps:', err);
+        useToastStore.getState().addToast(`保存应用列表失败 (IO_ERROR): ${err}`, 'error');
       }
-    }, 500);
+    }, PERSIST_DEBOUNCE_MS);
   }
 
   // Settings changed
@@ -88,11 +123,11 @@ useDataStore.subscribe((state, prevState) => {
     if (settingsSaveTimeout) clearTimeout(settingsSaveTimeout);
     settingsSaveTimeout = setTimeout(async () => {
       try {
-        const isPortable = localStorage.getItem('portable_mode') !== 'false';
-        await platform.saveSettings(isPortable, JSON.stringify(state.settings));
+        await platform.saveSettings(cachedPortable, JSON.stringify(state.settings));
       } catch (err) {
         console.error('Failed to save settings:', err);
+        useToastStore.getState().addToast(`保存设置失败 (IO_ERROR): ${err}`, 'error');
       }
-    }, 500);
+    }, PERSIST_DEBOUNCE_MS);
   }
 });

@@ -24,9 +24,9 @@ pub fn setup_tray(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     let is_visible = window.is_visible().unwrap_or(false);
                     let is_focused = window.is_focused().unwrap_or(false);
                     if is_visible && is_focused {
-                        crate::trigger_hide_animation(&window);
+                        crate::services::window_service::trigger_hide_animation(&window);
                     } else {
-                        crate::trigger_show_animation(&window);
+                        crate::services::window_service::trigger_show_animation(&window);
                     }
                 }
             }
@@ -44,9 +44,9 @@ pub fn setup_tray(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     let is_visible = window.is_visible().unwrap_or(false);
                     let is_focused = window.is_focused().unwrap_or(false);
                     if is_visible && is_focused {
-                        crate::trigger_hide_animation(&window);
+                        crate::services::window_service::trigger_hide_animation(&window);
                     } else {
-                        crate::trigger_show_animation(&window);
+                        crate::services::window_service::trigger_show_animation(&window);
                     }
                 }
             }

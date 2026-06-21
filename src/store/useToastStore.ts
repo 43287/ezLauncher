@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { generateId } from '../constants/ids';
 
 export interface ToastMessage {
   id: string;
@@ -15,7 +16,7 @@ interface ToastState {
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
   addToast: (message, type = 'info') => {
-    const id = Math.random().toString(36).substring(2, 9);
+    const id = generateId();
     set((state) => ({
       toasts: [...state.toasts, { id, message, type }]
     }));

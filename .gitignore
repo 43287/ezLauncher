@@ -13,8 +13,14 @@ node_modules
 # Build outputs
 dist
 dist-ssr
-src-tauri/target/
-src-tauri/Cargo.lock
+
+# Rust / Cargo build output (任意层级的 crate，覆盖 src-tauri/target 与子 crate 如 rdev_test/target)
+target/
+# Tauri 自动生成的 capability schema
+src-tauri/gen/schemas
+
+# TypeScript 增量编译缓存
+*.tsbuildinfo
 
 # Environment
 *.local
@@ -27,17 +33,26 @@ src-tauri/Cargo.lock
 specs/
 .specify/
 
+# Claude Code 本地工具产物（CLAUDE.md 不在此列，应被跟踪）
+.claude/
+
 # Docs and Output
 output/
 docs/
+
+# 运行时数据（DPAPI 密文，含个人应用列表，不应进仓库）
+**/data/apps.json
+**/data/settings.json
+**/data/*.bak
+**/data/*.tmp
 
 # Editor directories and files
 .vscode/
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-output/
