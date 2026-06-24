@@ -45,6 +45,8 @@ docs/
 **/data/settings.json
 **/data/*.bak
 **/data/*.tmp
+# 运行时图标缓存（按机器生成，非源码）
+**/data/icon/cache/
 
 # Editor directories and files
 .vscode/
