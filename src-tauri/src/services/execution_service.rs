@@ -6,7 +6,7 @@ use crate::services::error::ServiceError;
 use crate::services::os::windows::SystemApp;
 
 pub trait ExecutionServiceTrait: Send + Sync {
-    fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool, cwd: Option<String>, envs: Option<HashMap<String, String>>) -> Result<(), ServiceError>;
+    fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool, cwd: Option<String>, envs: Option<HashMap<String, String>>, creation_flag: Option<u32>) -> Result<(), ServiceError>;
     fn extract_file_info(&self, file_path: &str) -> Result<ExtractedFileInfo, ServiceError>;
     fn get_system_apps(&self) -> Result<Arc<Vec<SystemApp>>, ServiceError>;
     fn relaunch_as_admin(&self) -> Result<(), ServiceError>;
@@ -23,7 +23,7 @@ impl ExecutionService {
 }
 
 impl ExecutionServiceTrait for ExecutionService {
-    fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool, cwd: Option<String>, envs: Option<HashMap<String, String>>) -> Result<(), ServiceError> {
+    fn launch_app(&self, executable_path: &str, args: Option<Vec<String>>, run_as_admin: bool, cwd: Option<String>, envs: Option<HashMap<String, String>>, creation_flag: Option<u32>) -> Result<(), ServiceError> {
         tracing::info!("====> 尝试启动目标进程: {} {:?} (管理员: {})", executable_path, args, run_as_admin);
         
         // 对于管理员提权启动，如果直接传入的是 .lnk 快捷方式，底层 Proxy 的 cmd.spawn() 会报 os error 193 
@@ -62,9 +62,10 @@ impl ExecutionServiceTrait for ExecutionService {
         }
             
         if run_as_admin {
+            // 提权路径经代理 ShellExecuteW，创建标志不适用
             self.proxy.request_admin_launch(&final_path, final_args, final_cwd, envs)
         } else {
-            crate::services::os::windows::launch_app_windows(&final_path, final_args, final_cwd, envs)
+            crate::services::os::windows::launch_app_windows(&final_path, final_args, final_cwd, envs, creation_flag)
         }
     }
 
@@ -119,7 +120,7 @@ mod tests {
     #[test]
     fn test_launch_app_invalid_path() {
         let service = ExecutionService::new(Arc::new(crate::services::proxy_server::ProxyService::new()));
-        let result = service.launch_app("invalid_executable_path_12345.exe", None, false, None, None);
+        let result = service.launch_app("invalid_executable_path_12345.exe", None, false, None, None, None);
         // 对于 Windows 下使用 ShellExecuteW 的情况，可能返回 err。此处仅作调用测试
         assert!(result.is_err(), "Launch app should fail with invalid path");
     }

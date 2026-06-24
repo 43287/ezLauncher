@@ -5,6 +5,7 @@ import { SettingsWindow } from "./SettingsWindow";
 import { PropertiesModal } from "./PropertiesModal";
 import { SystemAppModal } from "./SystemAppModal";
 import { LaunchItem } from "../types";
+import { generateId } from "../constants/ids";
 
 export function AppModals() {
   const {
@@ -44,7 +45,7 @@ export function AppModals() {
       {isAddingApp && (
         <PropertiesModal
           app={{
-            id: Date.now().toString(),
+            id: generateId(),
             name: "新建快捷方式",
             type: addingAppType,
             shortcut: null,

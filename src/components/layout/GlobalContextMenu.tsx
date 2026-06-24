@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef, type FC } from 'react';
 import { useContextMenuStore, ContextMenuItemData } from '../../store/useContextMenuStore';
 import { ContextMenuItem } from '../ContextMenuItem';
 
-export const GlobalContextMenu: React.FC = () => {
+export const GlobalContextMenu: FC = () => {
   const { isOpen, position, items, closeMenu } = useContextMenuStore();
   const menuRef = useRef<HTMLDivElement>(null);
 

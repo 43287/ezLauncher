@@ -26,6 +26,7 @@ const baseApp = (type: string): LaunchItem => ({
   id: '1', name: 'old', type,
   url: null, executablePath: null, args: null, cwd: null, envVariables: null,
   runAsAdmin: null, inTerminal: null, isDir: null, iconUrl: null, shortcut: null,
+  inputPipeline: null, paramPresets: null, multiParamEnabled: null,
   categoryId: '1', columnId: '1',
 });
 

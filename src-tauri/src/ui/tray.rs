@@ -10,7 +10,7 @@ pub fn setup_tray(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let _tray = TrayIconBuilder::new()
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(app.default_window_icon().cloned().expect("Default window icon required; ensure icons are configured in tauri.conf.json"))
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
                 #[cfg(target_os = "windows")]

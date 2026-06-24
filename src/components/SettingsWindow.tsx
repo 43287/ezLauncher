@@ -1,28 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, type FC, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useDataStore } from '../store/useDataStore';
-import { SettingSchema, SettingType } from '../types';
+import { useHistoryStore } from '../store/useHistoryStore';
+import { SettingSchema, ReadonlyShortcutSetting, SettingsConfig } from '../types';
 import { ShortcutCatcher } from './ShortcutCatcher';
 import { platform } from '../api/platform';
+import { useAnimatedClose } from '../hooks/useAnimatedClose';
+import { useWheelTabSwitch } from '../hooks/useWheelTabSwitch';
 import { SETTINGS_SCHEMA } from '../constants/settingsSchema';
 
 interface SettingsWindowProps {
   onClose: () => void;
 }
 
-export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
+export const SettingsWindow: FC<SettingsWindowProps> = ({ onClose }) => {
   const { settings, updateSetting, apps } = useDataStore();
   
   // 提取应用自身配置的快捷键
-  const appShortcuts = apps
+  const appShortcuts: ReadonlyShortcutSetting[] = apps
     .filter(app => app.shortcut)
     .map(app => ({
       id: `shortcut_${app.id}`,
       category: '快捷键管理',
       label: `启动 ${app.name}`,
       description: `用于快速启动 ${app.name}`,
-      type: 'readonly_shortcut' as SettingType,
-      defaultValue: app.shortcut,
+      type: 'readonly_shortcut' as const,
+      defaultValue: app.shortcut ?? '',
       appId: app.id
     }));
 
@@ -35,10 +38,10 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   const finalCategories = Array.from(new Set([...orderedCategories, ...categories]));
 
   const [activeCategory, setActiveCategory] = useState(finalCategories[0]);
-  const wheelTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { handleWheel } = useWheelTabSwitch(finalCategories, activeCategory, setActiveCategory);
 
   const [isVisible, setIsVisible] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
+  const { isClosing, handleClose } = useAnimatedClose(onClose);
   const [tooltipData, setTooltipData] = useState<{ text: string; x: number; y: number } | null>(null);
 
   // 便携模式开关：状态来自注册表（不在 settings 数据内）
@@ -51,7 +54,13 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   }, []);
 
   useEffect(() => {
-    platform.getPortableMode().then(setPortable).catch(() => { /* 读失败保持默认便携 */ });
+    let cancelled = false;
+    platform.getPortableMode().then((mode) => {
+      if (!cancelled) setPortable(mode);
+    }).catch((e) => {
+      if (!cancelled) console.warn('Failed to get portable mode:', e);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // 切换便携模式：写注册表并迁移数据（迁移前已备份），随后重载以读取新位置
@@ -69,14 +78,21 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
     }
   };
 
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-    }, 200);
+  // 009: 清除采集历史记录（FR-006）
+  const [historyCleared, setHistoryCleared] = useState(false);
+  const handleClearHistory = async () => {
+    try {
+      const mode = await platform.getPortableMode();
+      await platform.clearHistory(mode);
+      useHistoryStore.getState().clear();
+      setHistoryCleared(true);
+      setTimeout(() => setHistoryCleared(false), 2000);
+    } catch (err) {
+      console.warn('Failed to clear history:', err);
+    }
   };
 
-  const handleMouseEnter = (e: React.MouseEvent, text: string) => {
+  const handleMouseEnter = (e: MouseEvent, text: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setTooltipData({
       text,
@@ -93,51 +109,59 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
   // 若尚未加载完毕，对应的控件会暂时展示 schema.defaultValue
 
   const renderControl = (schema: SettingSchema) => {
-    const key = schema.id as keyof typeof settings;
-    const value = settings[key] !== undefined ? settings[key] : schema.defaultValue;
+    const id = schema.id as keyof typeof settings;
+    const stored = settings[id];
 
     switch (schema.type) {
-      case 'switch':
+      case 'switch': {
+        const value = (stored !== undefined ? stored : schema.defaultValue) as boolean;
         return (
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
               className="sr-only peer"
-              checked={value as boolean}
-              onChange={(e) => updateSetting(key as any, e.target.checked as any)}
+              checked={value}
+              onChange={(e) => updateSetting(id, e.target.checked as unknown as SettingsConfig[keyof SettingsConfig])}
             />
             <div className="w-9 h-5 bg-black/10 dark:bg-white/10 rounded-full peer peer-checked:bg-blue-500 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400 peer-focus-visible:ring-offset-2 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-black/5 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-[16px] shadow-inner"></div>
           </label>
         );
-      case 'input':
+      }
+      case 'input': {
+        const value = (stored !== undefined ? stored : schema.defaultValue) as string;
         return (
           <input
             type="text"
             className="w-20 bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors"
-            value={value as string}
+            value={value}
             onChange={(e) => {
               if (schema.id === 'columns') {
                 const parsed = parseInt(e.target.value);
                 if (!isNaN(parsed) && parsed >= 1 && parsed <= 12) {
-                  updateSetting(schema.id as any, parsed);
-                } else if (e.target.value === '') {
-                  // Allow clearing temporarily while typing
+                  updateSetting(id, parsed);
+                }
+              } else if (schema.id === 'historyLimit') {
+                const parsed = parseInt(e.target.value);
+                if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+                  updateSetting(id, parsed);
                 }
               } else {
-                updateSetting(schema.id as any, e.target.value);
+                updateSetting(id, e.target.value);
               }
             }}
           />
         );
-      case 'select':
+      }
+      case 'select': {
+        const value = (stored !== undefined ? stored : schema.defaultValue) as string;
         return (
           <div className="relative">
             <select
               className="appearance-none pr-6 bg-black/5 dark:bg-white/5 border border-transparent hover:border-black/10 dark:hover:border-white/20 rounded-md px-2 py-1 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors cursor-pointer"
-              value={value as string}
-              onChange={(e) => updateSetting(key, e.target.value)}
+              value={value}
+              onChange={(e) => updateSetting(id, e.target.value)}
             >
-              {schema.options?.map((opt) => (
+              {schema.options.map((opt) => (
                 <option key={opt.value} value={opt.value} className="bg-white dark:bg-gray-800">
                   {opt.label}
                 </option>
@@ -148,24 +172,26 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
             </div>
           </div>
         );
-      case 'shortcut':
+      }
+      case 'shortcut': {
+        const value = (stored !== undefined ? stored : schema.defaultValue) as string;
         return (
           <ShortcutCatcher
-            value={value as string}
-            onChange={(val) => updateSetting(key, val)}
-            defaultValue={schema.defaultValue as string}
+            value={value}
+            onChange={(val) => updateSetting(id, val)}
+            defaultValue={schema.defaultValue}
           />
         );
-      case 'readonly_shortcut':
+      }
+      case 'readonly_shortcut': {
         return (
           <div className="flex items-center space-x-2">
             <span className="text-xs font-mono bg-black/5 dark:bg-white/10 px-2 py-1 rounded-md text-gray-700 dark:text-gray-300">
-              {schema.defaultValue as string}
+              {schema.defaultValue}
             </span>
           </div>
         );
-      default:
-        return null;
+      }
     }
   };
 
@@ -213,20 +239,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
 
           <div 
             className="flex flex-col p-4 bg-transparent rounded-b-xl overflow-hidden" 
-            onWheel={(e) => {
-              e.stopPropagation();
-              if (!wheelTimeoutRef.current) {
-                const currentIndex = finalCategories.findIndex(c => c === activeCategory);
-                if (e.deltaY > 0 && currentIndex < finalCategories.length - 1) {
-                  setActiveCategory(finalCategories[currentIndex + 1]);
-                } else if (e.deltaY < 0 && currentIndex > 0) {
-                  setActiveCategory(finalCategories[currentIndex - 1]);
-                }
-                wheelTimeoutRef.current = setTimeout(() => {
-                  wheelTimeoutRef.current = null;
-                }, 150);
-              }
-            }}
+            onWheel={handleWheel}
           >
             <div className="flex-1 overflow-y-auto scrollbar-hidden pr-1">
               <div className="grid grid-cols-1 grid-rows-1">
@@ -239,7 +252,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
                           {schema.description && (
                             <div
                               className="relative flex items-center"
-                              onMouseEnter={(e) => handleMouseEnter(e, schema.description!)}
+                              onMouseEnter={(e) => handleMouseEnter(e, schema.description ?? '')}
                               onMouseLeave={handleMouseLeave}
                             >
                               <div className="w-3.5 h-3.5 rounded-full border border-gray-400 text-gray-500 dark:border-gray-500 dark:text-gray-400 flex items-center justify-center text-[9px] font-bold cursor-help ml-1">
@@ -279,6 +292,18 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ onClose }) => {
                             <div className="w-9 h-5 bg-black/10 dark:bg-white/10 rounded-full peer peer-checked:bg-blue-500 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400 peer-focus-visible:ring-offset-2 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-black/5 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-[16px] shadow-inner"></div>
                           </label>
                         </div>
+                      </div>
+                    )}
+                    {category === '通用' && (
+                      <div className="flex justify-between items-center bg-black/5 dark:bg-white/5 px-3 h-11 rounded-md">
+                        <div className="text-gray-900 dark:text-gray-100 font-medium text-xs whitespace-nowrap">采集历史记录</div>
+                        <button
+                          type="button"
+                          onClick={handleClearHistory}
+                          className="ml-4 flex-shrink-0 px-3 py-1 text-xs font-medium rounded-md text-red-600 bg-red-500/10 hover:bg-red-500/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                        >
+                          {historyCleared ? '已清除' : '清除全部'}
+                        </button>
                       </div>
                     )}
                   </div>

@@ -125,9 +125,53 @@ pub async fn save_apps(
 
 #[command]
 pub fn restore_from_backup(
-    portable: bool, 
+    portable: bool,
     app_handle: AppHandle,
     store_service: State<'_, Arc<dyn StoreServiceTrait>>
 ) -> Result<(), AppError> {
     Ok(store_service.restore_from_backup(portable, &app_handle)?)
+}
+
+// 009: 采集历史持久化（独立 history.json，DPAPI + 便携位置，缺文件视为空）
+// contracts/tauri-commands.md C4
+#[command]
+pub async fn load_history(
+    portable: bool,
+    app_handle: AppHandle,
+    crypto_service: State<'_, Arc<dyn CryptoServiceTrait>>,
+    store_service: State<'_, Arc<dyn StoreServiceTrait>>
+) -> Result<String, AppError> {
+    let result = store_service
+        .load_file(portable, "history.json", &app_handle, crypto_service.inner().clone())
+        .await?;
+    // 缺文件/空内容视为空历史对象（衍生数据，不报"丢失"）
+    if result.trim().is_empty() {
+        return Ok("{}".to_string());
+    }
+    Ok(result)
+}
+
+#[command]
+pub async fn save_history(
+    portable: bool,
+    history_json: String,
+    app_handle: AppHandle,
+    crypto_service: State<'_, Arc<dyn CryptoServiceTrait>>,
+    store_service: State<'_, Arc<dyn StoreServiceTrait>>
+) -> Result<(), AppError> {
+    Ok(store_service
+        .save_file(portable, "history.json", history_json, &app_handle, crypto_service.inner().clone())
+        .await?)
+}
+
+#[command]
+pub async fn clear_history(
+    portable: bool,
+    app_handle: AppHandle,
+    crypto_service: State<'_, Arc<dyn CryptoServiceTrait>>,
+    store_service: State<'_, Arc<dyn StoreServiceTrait>>
+) -> Result<(), AppError> {
+    Ok(store_service
+        .save_file(portable, "history.json", "{}".to_string(), &app_handle, crypto_service.inner().clone())
+        .await?)
 }

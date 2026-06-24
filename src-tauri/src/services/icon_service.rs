@@ -28,8 +28,18 @@ impl IconService {
     }
 }
 
+// 图标数据基址：用 exe 所在目录而非当前工作目录（CWD），避免读写目录漂移、
+// 也不污染任意 CWD（FR-024）。回退到 current_dir 仅为极端情况兜底。
+fn get_data_base_dir() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default()
+}
+
 fn get_cache_dir() -> PathBuf {
-    let mut dir = std::env::current_dir().unwrap_or_default();
+    let mut dir = get_data_base_dir();
     dir.push("data");
     dir.push("icon");
     dir.push("cache");
@@ -40,7 +50,7 @@ fn get_cache_dir() -> PathBuf {
 }
 
 fn get_custom_dir() -> PathBuf {
-    let mut dir = std::env::current_dir().unwrap_or_default();
+    let mut dir = get_data_base_dir();
     dir.push("data");
     dir.push("icon");
     dir.push("custom");
@@ -56,13 +66,21 @@ pub async fn copy_custom_icon(src_path: String) -> Result<String, String> {
     if !path.exists() || !path.is_file() {
         return Err("Source file does not exist".into());
     }
+
+    // FR-004: 拒绝超过 10 MB 的源文件
+    const MAX_SIZE: u64 = 10 * 1024 * 1024;
+    let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    if file_size > MAX_SIZE {
+        return Err(format!("File too large: {} bytes (max {})", file_size, MAX_SIZE));
+    }
     
     let custom_dir = get_custom_dir();
     
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png");
+    // 守卫时间戳：时钟早于 UNIX_EPOCH 时不再 panic（FR-017）
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .map_err(|e| format!("System clock error: {}", e))?
         .as_millis();
     let file_name = format!("{}.{}", timestamp, ext);
     let dest_path = custom_dir.join(&file_name);
@@ -77,19 +95,39 @@ pub async fn copy_custom_icon(src_path: String) -> Result<String, String> {
 impl IconServiceTrait for IconService {
     async fn get_icon_data(&self, decoded_path: &str) -> Result<Vec<u8>, ServiceError> {
         if decoded_path.starts_with("custom/") {
-            let file_name = decoded_path.strip_prefix("custom/").unwrap();
+            let file_name = decoded_path.strip_prefix("custom/")
+                .ok_or_else(|| ServiceError::Internal("Invalid custom icon path prefix".into()))?;
             let custom_dir = get_custom_dir();
             let file_path = custom_dir.join(file_name);
-            if let Ok(data) = tokio::fs::read(&file_path).await {
-                return Ok(data);
+
+            // 路径穿越防御：规范化后验证仍在 custom 目录内（FR-001）
+            let canonical_file = file_path.canonicalize().map_err(|e| {
+                ServiceError::Security(format!("Cannot resolve custom icon path: {}", e))
+            })?;
+            let canonical_base = custom_dir.canonicalize().unwrap_or_else(|_| custom_dir.clone());
+            if !canonical_file.starts_with(&canonical_base) {
+                return Err(ServiceError::Security("Path traversal detected in custom icon path".into()));
             }
-            return Err(ServiceError::Internal(format!("Custom icon not found: {}", decoded_path)));
+
+            let data = tokio::fs::read(&canonical_file).await.map_err(|e| {
+                ServiceError::Internal(format!("Failed to read custom icon: {}", e))
+            })?;
+            return Ok(data);
         }
 
         if decoded_path.starts_with(r"\\") && !decoded_path.starts_with(r"\\?\") {
             let err_msg = format!("UNC paths are not allowed for icon extraction: {}", decoded_path);
             tracing::warn!("{}", err_msg);
             return Err(ServiceError::Security(err_msg));
+        }
+
+        // 通用分支收敛（FR-012）：仅对【已存在】的本地路径取图标，拒绝任意不存在路径，
+        // 缩小“前端任意路径 → SHGetFileInfoW”的信息披露面。
+        if !Path::new(decoded_path).exists() {
+            return Err(ServiceError::Security(format!(
+                "Icon path does not exist or is not accessible: {}",
+                decoded_path
+            )));
         }
 
         if let Some(cached) = self.cache.get(decoded_path) {

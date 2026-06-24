@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, type KeyboardEvent } from 'react';
 import { useDataStore } from '../store/useDataStore';
 import { useUIStore } from '../store/useUIStore';
 
@@ -6,7 +6,7 @@ export function useGridNavigation() {
   const { apps, settings } = useDataStore();
   const { activeLeftTab, activeTopTab, focusedAppId, setFocusedAppId } = useUIStore();
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // 仅处理方向键和回车键
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
       return;
@@ -60,11 +60,21 @@ export function useGridNavigation() {
       e.preventDefault(); // 阻止页面滚动
       setFocusedAppId(currentApps[nextIndex].id);
       
-      // 尝试让 DOM 元素也滚动入视野
+      // 尝试让 DOM 元素也滚动入视野（仅在元素不可见时触发，避免不必要的重排）
       setTimeout(() => {
         const el = document.querySelector(`[data-app-id="${currentApps[nextIndex].id}"]`);
         if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          const container = el.closest('.overflow-y-auto');
+          if (container) {
+            const cRect = container.getBoundingClientRect();
+            const eRect = el.getBoundingClientRect();
+            const isVisible = eRect.top >= cRect.top && eRect.bottom <= cRect.bottom;
+            if (!isVisible) {
+              el.scrollIntoView({ behavior: 'instant', block: 'nearest' });
+            }
+          } else {
+            el.scrollIntoView({ behavior: 'instant', block: 'nearest' });
+          }
         }
       }, 0);
     }

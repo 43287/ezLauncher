@@ -5,6 +5,13 @@ use std::sync::Arc;
 use crate::application::error::AppError;
 use crate::services::os::windows::SystemApp;
 
+// 图标预取并发上限（FR-010）
+static ICON_PREFETCH_SEM: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+
+fn icon_prefetch_sem() -> &'static tokio::sync::Semaphore {
+    ICON_PREFETCH_SEM.get_or_init(|| tokio::sync::Semaphore::new(16))
+}
+
 #[command]
 pub async fn get_system_apps(
     execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>,
@@ -21,11 +28,13 @@ pub async fn get_system_apps(
     let apps = arc_apps.as_ref().clone();
 
     // 预取图标以暖缓存（原在 scan_system_apps 内，移至命令层以使用注入的 IconService）
+    // FR-010: Semaphore 限制并发数，防止数百个 spawn 同时执行
     let icon = icon_service.inner().clone();
     for app in &apps {
         let path = app.path.clone();
         let icon = icon.clone();
         tauri::async_runtime::spawn(async move {
+            let _permit = icon_prefetch_sem().acquire().await;
             let _ = icon.get_icon_data(&path).await;
         });
     }
@@ -35,16 +44,17 @@ pub async fn get_system_apps(
 
 #[command]
 pub async fn launch_app(
-    executable_path: String, 
-    args: Option<Vec<String>>, 
+    executable_path: String,
+    args: Option<Vec<String>>,
     run_as_admin: Option<bool>,
     cwd: Option<String>,
     envs: Option<std::collections::HashMap<String, String>>,
+    creation_flag: Option<u32>,
     execution_service: State<'_, Arc<dyn ExecutionServiceTrait>>
 ) -> Result<(), AppError> {
     let service = execution_service.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        service.launch_app(&executable_path, args, run_as_admin.unwrap_or(false), cwd, envs)
+        service.launch_app(&executable_path, args, run_as_admin.unwrap_or(false), cwd, envs, creation_flag)
     })
     .await
     .map_err(|e| AppError::Other(format!("Thread join error: {}", e)))?
@@ -68,7 +78,7 @@ pub fn restart_as_admin(
 }
 
 #[command]
-pub async fn update_window_width(
+pub fn update_window_width(
     width: f64,
     is_left_dock: bool,
     window: tauri::WebviewWindow,

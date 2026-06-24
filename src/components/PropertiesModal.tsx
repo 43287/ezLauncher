@@ -1,16 +1,14 @@
 import React, { useState } from "react";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-import * as LucideIcons from "lucide-react";
-import { LaunchItem } from "../types";
+import { LaunchItem, InputPipeline, ParamPreset } from "../types";
+import { InteractiveParamsEditor } from "./InteractiveParamsEditor";
 import { ShortcutCatcher } from "./ShortcutCatcher";
 import { resolveIcon } from "../utils/icons";
+import { getLucideIcon } from "../utils/lucide";
+import { cn } from "../utils/cn";
 import { inferInterpreter, deriveNameFromPath, normalizeAppForSave } from "../utils/appTransform";
+import { useAnimatedClose } from "../hooks/useAnimatedClose";
+import { useWheelTabSwitch } from "../hooks/useWheelTabSwitch";
 import { IconPickerModal } from "./IconPickerModal";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
 
 interface PropertiesModalProps {
   app: LaunchItem;
@@ -89,23 +87,16 @@ const ToggleGroup: React.FC<{
 );
 
 export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, onSave }) => {
-  const [activeCategory, setActiveCategory] = useState<'通用' | '图标' | '高级'>('通用');
-  const categories = ['通用', '图标', '高级'];
-  const wheelTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  
-  const [isClosing, setIsClosing] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<'通用' | '图标' | '参数' | '高级'>('通用');
+  const categories = ['通用', '图标', '参数', '高级'] as const;
+  const { handleWheel } = useWheelTabSwitch(categories, activeCategory, setActiveCategory as (c: string) => void);
+
   const [isVisible, setIsVisible] = useState(false);
+  const { isClosing, handleClose } = useAnimatedClose(onClose);
 
   React.useEffect(() => {
     setIsVisible(true);
   }, []);
-
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-    }, 200);
-  };
 
   const [name, setName] = useState(app.name);
   const [shortcut, setShortcut] = useState(app.shortcut || "");
@@ -130,6 +121,11 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
     app.type === 'command' ? ((app.executablePath as any) || 'pwsh') : 'pwsh'
   );
   const [inTerminal, setInTerminal] = useState(app.type === 'command' ? (app.inTerminal || false) : false);
+
+  // 009: 交互式参数（输入流程 + 多参数附加）
+  const [inputPipeline, setInputPipeline] = useState<InputPipeline | null>(app.inputPipeline ?? null);
+  const [multiParamEnabled, setMultiParamEnabled] = useState<boolean>(app.multiParamEnabled ?? false);
+  const [paramPresets, setParamPresets] = useState<ParamPreset[]>(app.paramPresets ?? []);
 
   const handleScriptPathChange = (path: string) => {
     setScriptPath(path);
@@ -163,6 +159,11 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
       inTerminal,
     });
 
+    // 009: 写回交互式参数（仅在有内容时序列化，保持向后兼容）
+    finalApp.inputPipeline = inputPipeline;
+    finalApp.multiParamEnabled = multiParamEnabled ? true : null;
+    finalApp.paramPresets = paramPresets.length > 0 ? paramPresets : null;
+
     onSave(finalApp);
     handleClose();
   };
@@ -182,27 +183,14 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
         {/* Header - 横向 Tab */}
         <div 
           className="flex justify-between items-center px-4 py-2 bg-transparent"
-          onWheel={(e) => {
-            e.stopPropagation();
-            if (!wheelTimeoutRef.current) {
-              const currentIndex = categories.findIndex(c => c === activeCategory);
-              if (e.deltaY > 0 && currentIndex < categories.length - 1) {
-                setActiveCategory(categories[currentIndex + 1] as '通用' | '图标' | '高级');
-              } else if (e.deltaY < 0 && currentIndex > 0) {
-                setActiveCategory(categories[currentIndex - 1] as '通用' | '图标' | '高级');
-              }
-              wheelTimeoutRef.current = setTimeout(() => {
-                wheelTimeoutRef.current = null;
-              }, 150);
-            }
-          }}
+          onWheel={handleWheel}
         >
           <div className="flex gap-1">
             {categories.map(category => (
               <button
                 key={category}
                 type="button"
-                onClick={() => setActiveCategory(category as '通用' | '图标' | '高级')}
+                onClick={() => setActiveCategory(category as '通用' | '图标' | '参数' | '高级')}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 ${
                   activeCategory === category 
                     ? 'bg-black/5 dark:bg-white/10 text-gray-900 dark:text-gray-100' 
@@ -237,19 +225,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
               e.stopPropagation();
               return;
             }
-            
-            e.stopPropagation();
-            if (!wheelTimeoutRef.current) {
-              const currentIndex = categories.findIndex(c => c === activeCategory);
-              if (e.deltaY > 0 && currentIndex < categories.length - 1) {
-                setActiveCategory(categories[currentIndex + 1] as '通用' | '图标' | '高级');
-              } else if (e.deltaY < 0 && currentIndex > 0) {
-                setActiveCategory(categories[currentIndex - 1] as '通用' | '图标' | '高级');
-              }
-              wheelTimeoutRef.current = setTimeout(() => {
-                wheelTimeoutRef.current = null;
-              }, 150);
-            }
+            handleWheel(e);
           }}
         >
           <div className="flex-1 overflow-y-auto scrollbar-hidden">
@@ -317,7 +293,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                   <div className="w-20 h-20 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner">
                     {resolvedIcon?.type === 'lucide' ? (
                       <div className="w-12 h-12 flex items-center justify-center text-gray-800 dark:text-gray-200">
-                        {React.createElement((LucideIcons as any)[resolvedIcon.content] || LucideIcons.HelpCircle, { size: '100%', strokeWidth: 1.5 })}
+                        {React.createElement(getLucideIcon(resolvedIcon.content), { size: '100%', strokeWidth: 1.5 })}
                       </div>
                     ) : resolvedIcon?.type === 'svg' ? (
                       <div 
@@ -356,6 +332,28 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({ app, onClose, 
                 </div>
                 
                 <div className="mt-auto pt-6 flex justify-end w-full">
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="px-4 py-1.5 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors apple-ease shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+
+              <div className={activeCategory === '参数' ? 'col-start-1 row-start-1 flex flex-col h-full' : 'col-start-1 row-start-1 flex flex-col h-full invisible pointer-events-none'}>
+                <div className="flex-1 overflow-y-auto scrollbar-hidden">
+                  <InteractiveParamsEditor
+                    pipeline={inputPipeline}
+                    onPipelineChange={setInputPipeline}
+                    multiParamEnabled={multiParamEnabled}
+                    onMultiParamEnabledChange={setMultiParamEnabled}
+                    presets={paramPresets}
+                    onPresetsChange={setParamPresets}
+                  />
+                </div>
+                <div className="mt-auto pt-6 flex justify-end">
                   <button
                     type="button"
                     onClick={handleSave}

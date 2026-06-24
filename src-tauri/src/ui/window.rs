@@ -37,7 +37,14 @@ pub fn setup_window(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     {
         if let Some(window) = app.get_webview_window("main") {
-            let hwnd = window.hwnd().unwrap().0 as isize;
+            // 守卫 hwnd：句柄不可用时记录并跳过窗口特化，而非 panic（FR-003）
+            let hwnd = match window.hwnd() {
+                Ok(h) => h.0 as isize,
+                Err(e) => {
+                    tracing::error!("====> 获取主窗口 HWND 失败，跳过窗口特化: {}", e);
+                    return Ok(());
+                }
+            };
             use windows::Win32::Foundation::HWND;
             use windows::Win32::UI::WindowsAndMessaging::{
                 ChangeWindowMessageFilterEx, MSGFLT_ALLOW, SetWindowLongPtrW, GWLP_WNDPROC

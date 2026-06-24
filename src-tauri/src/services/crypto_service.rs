@@ -12,6 +12,10 @@ pub trait CryptoServiceTrait: Send + Sync {
     fn decrypt_data(&self, data: &[u8]) -> Result<Vec<u8>, crate::services::error::ServiceError>;
 }
 
+// 注意（FR-013）：该 entropy 是编译进二进制的【常量】，任何能读取本程序的同用户进程
+// 都可提取它，因此它【不能】防止同用户其他程序解密。它仅把密文与本应用的格式绑定。
+// 真正的机密性来自 DPAPI 的用户登录密钥（数据无法被【其他用户】解密）。
+// 如需“防同用户其他程序”，应改用 per-install 随机 salt（受 DPAPI 保护的旁路存储）。
 const DPAPI_ENTROPY: &[u8] = b"ezLaunch_DPAPI_entropy_v1_8a9f3b2";
 
 pub struct CryptoService;
@@ -37,7 +41,7 @@ impl CryptoServiceTrait for CryptoService {
             pbData: data_vec.as_mut_ptr(),
         };
 
-        // Application-specific entropy to prevent other programs running as the same user from decrypting
+        // 应用专属 entropy：把密文与本应用格式绑定（非机密；机密性由 DPAPI 用户密钥提供）
         let mut entropy_vec = DPAPI_ENTROPY.to_vec();
         let entropy_blob = CRYPT_INTEGER_BLOB {
             cbData: entropy_vec.len() as u32,

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect, useRef } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef, type FC, type KeyboardEvent } from "react";
 import { ShortcutItem } from "./ShortcutItem";
 import {
   SortableContext,
@@ -16,12 +16,12 @@ interface AppGridProps {
 /**
  * 应用网格组件，支持拖拽添加应用
  */
-export const AppGrid: React.FC<AppGridProps> = () => {
+export const AppGrid: FC<AppGridProps> = () => {
   const apps = useDataStore((state) => state.apps);
   const settings = useDataStore((state) => state.settings);
   const activeLeftTab = useUIStore((state) => state.activeLeftTab);
   const activeTopTab = useUIStore((state) => state.activeTopTab);
-  const focusedAppId = useUIStore((state) => state.focusedAppId);
+  const { focusedAppId, setFocusedAppId } = useUIStore();
 
   const filteredApps = useMemo(() => {
     return apps.filter(
@@ -53,7 +53,7 @@ export const AppGrid: React.FC<AppGridProps> = () => {
     }
   }, [activeLeftTab, activeTopTab]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && focusedAppId) {
       e.preventDefault();
       // 模拟双击事件以启动应用
@@ -76,6 +76,12 @@ export const AppGrid: React.FC<AppGridProps> = () => {
         ref={gridRef}
         tabIndex={0}
         onKeyDown={handleKeyDown}
+        onClick={(e) => {
+          // 点击网格空白区域时清除键盘焦点高亮
+          if (e.target === gridRef.current) {
+            setFocusedAppId(null);
+          }
+        }}
         className={`h-full w-full rounded-2xl transition-all duration-300 apple-ease flex-1 outline-none ${
           isDraggingFile
             ? hoveredItemId 

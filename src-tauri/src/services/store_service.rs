@@ -143,11 +143,15 @@ impl StoreServiceTrait for StoreService {
             let target_path = std::path::Path::new(&target);
 
             if source_path != target_path && source_path.exists() {
-                // 非破坏式：覆盖目标前先备份目标已有内容（FR-002 “迁移前备份”）
+                // 非破坏式：覆盖目标前先备份目标已有内容（FR-002 “迁移前备份”）。
+                // 备份失败则中止覆盖，避免无备份地破坏既有数据（FR-005/P2-8）。
                 if target_path.exists() {
                     let mut bak_path = target_path.to_path_buf();
                     bak_path.set_extension("bak");
-                    let _ = std::fs::copy(target_path, &bak_path);
+                    if let Err(e) = std::fs::copy(target_path, &bak_path) {
+                        tracing::error!("覆盖前备份目标失败，中止迁移以防数据丢失: {}", e);
+                        return Err(ServiceError::Io(e));
+                    }
                 }
                 std::fs::copy(source_path, target_path)?;
             }
@@ -191,7 +195,12 @@ impl StoreServiceTrait for StoreService {
                 };
 
                 if is_valid_json {
-                    let _ = self.save_file(portable, file_name, content.clone(), app_handle, crypto_service).await;
+                    // 不再静默把明文当密文重写存储（FR-010/P2-7）：仅兼容读取旧明文，
+                    // 重新加密交由显式迁移/用户确认路径，避免构造明文被静默采纳并固化。
+                    tracing::warn!(
+                        "{} 解密失败但为合法明文 JSON：按旧明文读取，未自动重新加密（待显式迁移确认）。",
+                        file_name
+                    );
                     Ok(content)
                 } else {
                     // 解密且解析失败，这是致命错误，返回 ParseError 阻止启动并触发恢复向导
@@ -217,12 +226,15 @@ impl StoreServiceTrait for StoreService {
             let encrypted_data = crypto_service.encrypt_data(json_data.as_bytes())
                 .map_err(|e| ServiceError::Crypto(e.to_string()))?;
 
-            // 1. 备份现有文件为 .bak (如果存在)
+            // 1. 备份现有文件为 .bak (如果存在)。写入走 .tmp + rename 原子替换，
+            //    故备份失败仅告警、不阻断（FR-005/P2-8）。
             let path_obj = std::path::PathBuf::from(&path);
             if path_obj.exists() {
                 let mut bak_path = path_obj.clone();
                 bak_path.set_extension("bak");
-                let _ = std::fs::copy(&path_obj, &bak_path);
+                if let Err(e) = std::fs::copy(&path_obj, &bak_path) {
+                    tracing::warn!("写入前备份 {} 失败（继续原子写入）: {}", file_name_str, e);
+                }
             }
 
             // 2. 写入 .tmp 文件

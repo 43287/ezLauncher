@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type RefObject, type MouseEvent, type KeyboardEvent } from "react";
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -18,11 +18,11 @@ interface SortableTabProps {
   editValue: string;
   setEditValue: (val: string) => void;
   saveTabName: () => void;
-  handleInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  handleInputKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
   setActiveLeftTab: (id: string) => void;
-  handleTabDoubleClick: (tab: Tab, e?: React.MouseEvent) => void;
-  onContextMenu: (e: React.MouseEvent, tab: Tab) => void;
-  editInputRef: React.RefObject<HTMLInputElement | null>;
+  handleTabDoubleClick: (tab: Tab, e?: MouseEvent) => void;
+  onContextMenu: (e: MouseEvent, tab: Tab) => void;
+  editInputRef: RefObject<HTMLInputElement | null>;
 }
 
 function SortableTab({
@@ -70,7 +70,7 @@ function SortableTab({
       >
         {isEditing ? (
           <input
-          ref={editInputRef as React.RefObject<HTMLInputElement>}
+          ref={editInputRef as RefObject<HTMLInputElement>}
           type="text"
           value={editValue}
           aria-label="重命名标签"
@@ -120,7 +120,7 @@ export function Sidebar() {
     }
   }, [editingTabId]);
 
-  const handleTabDoubleClick = (tab: Tab, e?: React.MouseEvent) => {
+  const handleTabDoubleClick = (tab: Tab, e?: MouseEvent) => {
     if (e) e.stopPropagation();
     setEditingTabId(tab.id);
     setEditValue(tab.name);
@@ -135,7 +135,7 @@ export function Sidebar() {
     setEditingTabId(null);
   };
 
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       saveTabName();
     } else if (e.key === 'Escape') {
@@ -157,7 +157,7 @@ export function Sidebar() {
     updateSetting('leftTabs', newTabs);
   };
 
-  const handleTabContextMenu = (e: React.MouseEvent, tab: Tab) => {
+  const handleTabContextMenu = (e: MouseEvent, tab: Tab) => {
     e.preventDefault();
     e.stopPropagation();
     openMenu([
@@ -175,9 +175,8 @@ export function Sidebar() {
       aria-orientation="vertical"
       aria-label="主要导航"
     >
-      <div 
-        className="flex-1 w-full flex flex-col items-center overflow-y-auto gap-3 group" 
-        data-tauri-drag-region
+      <div
+        className="flex-1 w-full flex flex-col items-center overflow-y-auto gap-3 group"
       >
           <SortableContext
             items={leftTabs.map((t: Tab) => `leftTab-${t.id}`)}

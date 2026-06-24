@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type WheelEvent } from 'react';
 import { Tab } from '../types';
 
 export function useWheelNavigation(
@@ -18,7 +18,7 @@ export function useWheelNavigation(
     };
   }, []);
 
-  const handleWheel = (e: React.WheelEvent) => {
+  const handleWheel = (e: WheelEvent) => {
     if (isLocked) return;
     
     if (Math.abs(e.deltaX) < 10 && Math.abs(e.deltaY) < 10) return; // 忽略过小的滚动
@@ -32,9 +32,10 @@ export function useWheelNavigation(
 
     if (e.shiftKey || isHorizontalScroll) {
       if (topTabs.length === 0) return;
+      e.preventDefault(); // 阻止浏览器将 Shift+滚轮 当作横向滚动作用于 grid 容器
       const currentIndex = topTabs.findIndex(t => t.id === activeTopTab);
       const delta = isHorizontalScroll ? e.deltaX : e.deltaY;
-      
+
       if (delta > 0) {
         setActiveTopTab(topTabs[(currentIndex + 1) % topTabs.length].id);
       } else if (delta < 0) {
@@ -42,6 +43,7 @@ export function useWheelNavigation(
       }
     } else {
       if (leftTabs.length === 0) return;
+      e.preventDefault(); // 阻止浏览器将滚轮事件传递给可滚动子元素
       const currentIndex = leftTabs.findIndex(t => t.id === activeLeftTab);
       if (e.deltaY > 0) {
         setActiveLeftTab(leftTabs[(currentIndex + 1) % leftTabs.length].id);

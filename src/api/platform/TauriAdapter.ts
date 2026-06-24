@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { IPlatform } from "./IPlatform";
+import type { ProcessInfo, ResolveResult } from "../../types";
 
 // 基础设施适配层：仅与后端通信、失败时抛出，不依赖任何 UI（如 Toast）。
 // 用户提示由调用方（如 useDataStore 持久化协调）决定（FR-008）。
@@ -22,6 +23,18 @@ export class TauriAdapter implements IPlatform {
 
     async restoreFromBackup(portable: boolean): Promise<void> {
         return invoke<void>("restore_from_backup", { portable });
+    }
+
+    async loadHistory(portable: boolean): Promise<string> {
+        return invoke<string>("load_history", { portable });
+    }
+
+    async saveHistory(portable: boolean, historyJson: string): Promise<void> {
+        return invoke<void>("save_history", { portable, historyJson });
+    }
+
+    async clearHistory(portable: boolean): Promise<void> {
+        return invoke<void>("clear_history", { portable });
     }
 
     async getPortableMode(): Promise<boolean> {
@@ -55,8 +68,9 @@ export class TauriAdapter implements IPlatform {
         runAsAdmin: boolean,
         cwd?: string,
         envs?: Record<string, string>,
+        creationFlag?: number,
     ): Promise<void> {
-        return invoke<void>("launch_app", { executablePath, args, runAsAdmin, cwd, envs });
+        return invoke<void>("launch_app", { executablePath, args, runAsAdmin, cwd, envs, creationFlag });
     }
 
     async hideWindow(): Promise<void> {
@@ -85,5 +99,13 @@ export class TauriAdapter implements IPlatform {
 
     async unregisterAllShortcuts(): Promise<void> {
         return invoke<void>("unregister_all_shortcuts");
+    }
+
+    async enumerateProcesses(): Promise<ProcessInfo[]> {
+        return invoke<ProcessInfo[]>("enumerate_processes");
+    }
+
+    async resolveWindowProcessAtCursor(): Promise<ResolveResult> {
+        return invoke<ResolveResult>("resolve_window_process_at_cursor");
     }
 }

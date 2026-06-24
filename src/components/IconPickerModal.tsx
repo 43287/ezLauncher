@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, type FC } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { SVG_ICONS } from '../utils/icons';
+import { getLucideIcon } from '../utils/lucide';
+import type { LucideIcon } from 'lucide-react';
 
 interface IconPickerModalProps {
   initialIconUrl: string;
@@ -13,7 +15,7 @@ interface IconPickerModalProps {
 
 type TabType = 'system' | 'lucide' | 'url';
 
-export const IconPickerModal: React.FC<IconPickerModalProps> = ({
+export const IconPickerModal: FC<IconPickerModalProps> = ({
   initialIconUrl,
   onClose,
   onSelect,
@@ -39,9 +41,9 @@ export const IconPickerModal: React.FC<IconPickerModalProps> = ({
       // 过滤掉基础组件 Icon
       if (!/^[A-Z]/.test(key) || key === 'Icon') return false;
       
-      const item = (LucideIcons as any)[key];
+      const item = LucideIcons[key as keyof typeof LucideIcons] as LucideIcon | undefined;
       // 确保是合法的 React 渲染对象（通常是 forwardRef 返回的 object 或 function）
-      return item && (typeof item === 'object' || typeof item === 'function') && item.$$typeof;
+      return item && (typeof item === 'object' || typeof item === 'function') && (item as unknown as Record<string, unknown>).$$typeof;
     });
   }, []);
 
@@ -193,8 +195,8 @@ export const IconPickerModal: React.FC<IconPickerModalProps> = ({
                         }}
                       >
                         {rowIcons.map(iconName => {
-                          const IconComponent = (LucideIcons as any)[iconName];
-                          if (!IconComponent) return null;
+                          const IconComponent = getLucideIcon(iconName);
+                          if (IconComponent === LucideIcons.HelpCircle && iconName !== 'HelpCircle') return null;
                           return (
                             <button
                               key={iconName}

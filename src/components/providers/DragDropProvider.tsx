@@ -1,4 +1,4 @@
-import React, { ReactNode } from "react";
+import { type ReactNode, type FC } from "react";
 import {
   DndContext,
   closestCenter,
@@ -14,7 +14,7 @@ interface DragDropProviderProps {
   children: ReactNode;
 }
 
-export const DragDropProvider: React.FC<DragDropProviderProps> = ({ children }) => {
+export const DragDropProvider: FC<DragDropProviderProps> = ({ children }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {

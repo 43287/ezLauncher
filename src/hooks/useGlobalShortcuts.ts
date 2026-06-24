@@ -13,28 +13,28 @@ export function useGlobalShortcuts(isVisible: boolean) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isRecordingShortcut || !isVisible) return;
       
-      const summonShortcut = (settings.summonShortcut as string) || 'Alt+Space';
-      const summonMouseShortcut = (settings.summonMouseShortcut as string) || 'Mouse4';
+      const summonShortcut = settings.summonShortcut ?? 'Alt+Space';
+      const summonMouseShortcut = settings.summonMouseShortcut ?? 'Mouse4';
       if (!summonShortcut && !summonMouseShortcut) return;
 
       if (summonShortcut) {
         if (isShortcutMatch(e, summonShortcut)) {
           e.preventDefault();
           e.stopPropagation();
-          platform.hideWindow();
+          platform.hideWindow().catch((err) => console.error("hideWindow failed:", err));
         }
       }
     };
 
     const handlePointerDown = (e: PointerEvent) => {
       if (isRecordingShortcut || !isVisible) return;
-      const summonMouseShortcut = (settings.summonMouseShortcut as string) || 'Mouse4';
+      const summonMouseShortcut = settings.summonMouseShortcut ?? 'Mouse4';
       if (!summonMouseShortcut) return;
       
       if (isMouseMatch(e, summonMouseShortcut)) {
         e.preventDefault();
         e.stopPropagation();
-        platform.hideWindow();
+        platform.hideWindow().catch((err) => console.error("hideWindow failed:", err));
       }
     };
 

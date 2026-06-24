@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { AppGrid } from "./components/AppGrid";
 import { CustomTitlebar } from "./components/CustomTitlebar";
 import { useDataStore, setCachedPortable } from "./store/useDataStore";
+import { useHistoryStore, setHistoryCachedPortable, loadHistoryFromBackend } from "./store/useHistoryStore";
 import { useUIStore } from "./store/useUIStore";
 import { useModalStore } from "./store/useModalStore";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -15,6 +16,7 @@ import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useGlobalContextMenu } from "./hooks/useGlobalContextMenu";
 import { DragDropProvider } from "./components/providers/DragDropProvider";
 import { platform } from "./api/platform";
+import { SHORTCUT_ITEM_MAX_WIDTH, GRID_GAP_PX, GRID_PADDING_X, SCROLLBAR_RESERVE, SIDEBAR_WIDTH } from "./constants/layout";
 import "./App.css";
 
 function App() {
@@ -68,6 +70,14 @@ function App() {
         // 通过 useDataStore 的默认合并机制自动兼容新增字段
         if (isMounted) setSettings({ ...settings, ...parsedSettings });
 
+        // 2b. 同步历史记录上限与便携缓存，并加载历史（009）
+        setHistoryCachedPortable(portableFlag);
+        const mergedSettings = { ...settings, ...parsedSettings };
+        if (typeof mergedSettings.historyLimit === 'number') {
+          useHistoryStore.getState().setLimit(mergedSettings.historyLimit);
+        }
+        await loadHistoryFromBackend(portableFlag);
+
         // 3. 尝试加载并解析 Apps
         const appsJsonStr = await platform.loadApps(portableFlag);
         const parsedApps = JSON.parse(appsJsonStr);
@@ -101,11 +111,18 @@ function App() {
     }
 
     initializeStore();
-    
+
     return () => {
       isMounted = false;
     };
   }, []);
+
+  // 设置中的历史上限变化时，同步到历史 store（009，FR-006/Q5）
+  useEffect(() => {
+    if (typeof settings.historyLimit === 'number') {
+      useHistoryStore.getState().setLimit(settings.historyLimit);
+    }
+  }, [settings.historyLimit]);
 
   const handleRestoreBackup = async () => {
     try {
@@ -129,29 +146,21 @@ function App() {
     ? "translate-x-0" 
     : (isLeftDock ? "-translate-x-full" : "translate-x-full");
 
-  // 根据列数动态计算宽度
+  // 根据列数动态计算宽度（常量定义见 src/constants/layout.ts）
   const columns = settings.columns || 4;
-  // 精确计算紧凑模式：
-  // 每个 ShortcutItem 的最大宽度调整为 80px (w-full max-w-[80px])
-  // 网格 gap 保持 1 (0.25rem = 4px)
-  // columns 个格子需要 columns * 80 的宽度
-  // (columns - 1) 个 gap 需要 (columns - 1) * 4 的宽度
-  // AppGrid 容器的 padding 缩小为 p-2 (0.5rem = 8px)，左右总共 16px
-  // 加上 Sidebar 约 56px (w-14)
-  // 再加上 16px 专门用于预留 Windows 纵向滚动条的宽度，防止内容溢出
-  const gridContainerWidth = (columns * 80) + ((columns - 1) * 4) + 16 + 16;
-  const totalWindowWidth = gridContainerWidth + 56; // 主内容 + Sidebar
+  const gridContainerWidth = (columns * SHORTCUT_ITEM_MAX_WIDTH) + ((columns - 1) * GRID_GAP_PX) + GRID_PADDING_X + SCROLLBAR_RESERVE;
+  const totalWindowWidth = gridContainerWidth + SIDEBAR_WIDTH;
 
   useEffect(() => {
     if (isLoaded) {
-      platform.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch(console.error);
+      platform.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch((e: unknown) => console.error(e));
     }
   }, [isLoaded, totalWindowWidth, settings.dockPosition]);
 
   // 当窗口首次可见时，确保调用一次 updateWindowWidth 来调整到最新设置的位置
   useEffect(() => {
     if (isVisible && isLoaded) {
-        platform.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch(console.error);
+        platform.updateWindowWidth(totalWindowWidth, settings.dockPosition === 'left').catch((e: unknown) => console.error(e));
     }
   }, [isVisible, isLoaded]);
 

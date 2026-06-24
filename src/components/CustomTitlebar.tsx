@@ -1,8 +1,8 @@
-import React from "react";
+import { type FC } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 
-export const CustomTitlebar: React.FC = () => {
+export const CustomTitlebar: FC = () => {
   const appWindow = getCurrentWindow();
 
   const handleAdminRestart = async () => {

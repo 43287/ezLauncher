@@ -13,6 +13,12 @@
     "core:window:allow-set-position",
     "core:window:allow-current-monitor",
     "core:window:allow-is-visible",
+    "core:window:allow-create",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:webview:allow-create-webview-window",
+    "core:event:allow-emit",
+    "core:event:allow-listen",
     "autostart:default",
     "dialog:default"
   ]

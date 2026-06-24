@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type RefObject, type MouseEvent, type KeyboardEvent } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { useDataStore } from "../../store/useDataStore";
 import { useUIStore } from "../../store/useUIStore";
@@ -24,11 +24,11 @@ function DroppableTopTab({
   editValue: string;
   setEditValue: (v: string) => void;
   saveTabName: () => void;
-  handleInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  handleInputKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
   setActiveTopTab: (id: string) => void;
-  handleTabDoubleClick: (t: Tab, e?: React.MouseEvent) => void;
-  handleTabContextMenu: (e: React.MouseEvent, t: Tab) => void;
-  editInputRef: React.RefObject<HTMLInputElement | null>;
+  handleTabDoubleClick: (t: Tab, e?: MouseEvent) => void;
+  handleTabContextMenu: (e: MouseEvent, t: Tab) => void;
+  editInputRef: RefObject<HTMLInputElement | null>;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `topTab-${tab.id}`,
@@ -44,7 +44,7 @@ function DroppableTopTab({
       {isEditing ? (
         <div className="flex h-8 items-center relative w-full">
           <input
-            ref={editInputRef as React.RefObject<HTMLInputElement>}
+            ref={editInputRef as RefObject<HTMLInputElement>}
             type="text"
             value={editValue}
             aria-label="重命名顶部标签"
@@ -96,7 +96,7 @@ export function TopBar() {
     }
   }, [editingTabId]);
 
-  const handleTabDoubleClick = (tab: Tab, e?: React.MouseEvent) => {
+  const handleTabDoubleClick = (tab: Tab, e?: MouseEvent) => {
     if (e) e.stopPropagation();
     setEditingTabId(tab.id);
     setEditValue(tab.name);
@@ -116,7 +116,7 @@ export function TopBar() {
     setEditingTabId(null);
   };
 
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       saveTabName();
     } else if (e.key === 'Escape') {
@@ -137,11 +137,7 @@ export function TopBar() {
     updateSetting('topTabs', newTabsMap);
   };
 
-  const handleContainerDoubleClick = () => {
-    // 明确规定顶部标签页不能新建，且最多只有 4 个
-  };
-
-  const handleTabContextMenu = (e: React.MouseEvent, tab: Tab) => {
+  const handleTabContextMenu = (e: MouseEvent, tab: Tab) => {
     e.preventDefault();
     e.stopPropagation();
     openMenu([
@@ -154,10 +150,9 @@ export function TopBar() {
   return (
     <div 
       className="flex px-4 pt-3 pb-2 gap-2 bg-transparent" 
-      data-tauri-drag-region 
-      role="tablist" 
+      data-tauri-drag-region
+      role="tablist"
       aria-label="次级导航"
-      onDoubleClick={handleContainerDoubleClick}
     >
       {currentTopTabs.map((tab: Tab) => {
         const isActive = activeTopTab === tab.id;

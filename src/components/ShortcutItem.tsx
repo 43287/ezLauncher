@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import * as LucideIcons from "lucide-react";
 import { LaunchItem } from "../types";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -8,7 +7,9 @@ import { useDataStore } from "../store/useDataStore";
 import { useUIStore } from "../store/useUIStore";
 import { useModalStore } from "../store/useModalStore";
 import { resolveIcon } from "../utils/icons";
+import { getLucideIcon } from "../utils/lucide";
 import { LaunchService } from "../services/LaunchService";
+import { launchItemInteractive, needsInteractiveLaunch } from "../services/collectionRunner";
 import { platform } from "../api/platform";
 
 interface ShortcutItemProps {
@@ -26,7 +27,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
   const openMenu = useContextMenuStore((state) => state.openMenu);
   const { removeApp, updateApp } = useDataStore();
   const openEditApp = useModalStore((state) => state.openEditApp);
-  const focusedAppId = useUIStore((state) => state.focusedAppId);
+  const { focusedAppId, setFocusedAppId } = useUIStore();
   const isKeyboardFocused = focusedAppId === app.id;
 
   const {
@@ -48,7 +49,17 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
   };
 
   const handleLaunch = async (e?: React.MouseEvent, forceAdmin?: boolean) => {
-    await LaunchService.executeLaunch(app, forceAdmin || (e ? e.shiftKey : false));
+    // 配置了输入流程或多参数附加 → 走交互式采集（FR-001/012/016）；否则保持现状（行为等价）
+    // 失败已由下游 toast 反馈（FR-001），此处兜底捕获以免未处理拒绝。
+    try {
+      if (needsInteractiveLaunch(app)) {
+        await launchItemInteractive(app);
+        return;
+      }
+      await LaunchService.executeLaunch(app, forceAdmin || (e ? e.shiftKey : false));
+    } catch (error) {
+      console.error("Launch failed:", error);
+    }
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -99,6 +110,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
 
   const handleSeparatorDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setFocusedAppId(null); // 清除键盘导航焦点，避免残留高亮
     setIsEditingSeparator(true);
   };
 
@@ -130,7 +142,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
           data-app-id={app.id}
           onContextMenu={handleContextMenu}
           onDoubleClick={handleSeparatorDoubleClick}
-          className={`col-span-full flex items-center py-2 cursor-grab active:cursor-grabbing rounded-lg h-[40px] shrink-0 ${
+          className={`col-span-full flex items-center py-2 cursor-grab active:cursor-grabbing rounded-lg h-[40px] shrink-0 focus-visible:outline-none ${
             isDragging ? '' : 'transition-all duration-300 apple-ease'
           } ${
             isHovered ? 'bg-blue-50/50 dark:bg-blue-900/30 ring-1 ring-blue-400' : ''
@@ -170,7 +182,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
           data-app-id={app.id}
           onDoubleClick={handleLaunch}
           onContextMenu={handleContextMenu}
-          className={`aspect-square w-full max-w-[80px] flex flex-col items-center justify-center p-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 cursor-grab active:cursor-grabbing active:scale-95 ${
+          className={`aspect-square w-full max-w-[80px] flex flex-col items-center justify-center p-0 rounded-lg focus-visible:outline-none cursor-grab active:cursor-grabbing active:scale-95 ${
             isDragging ? '' : 'transition-all duration-300 apple-ease'
           } ${
             isHovered 
@@ -180,7 +192,7 @@ export const ShortcutItem: React.FC<ShortcutItemProps> = React.memo(({ app, isHo
         >
           {resolvedIcon?.type === 'lucide' ? (
             <div className="w-10 h-10 mb-0.5 rounded-lg object-contain shadow-sm bg-transparent pointer-events-none flex items-center justify-center text-gray-800 dark:text-gray-200">
-              {React.createElement((LucideIcons as any)[resolvedIcon.content] || LucideIcons.HelpCircle, { size: '100%', strokeWidth: 1.5 })}
+              {React.createElement(getLucideIcon(resolvedIcon.content), { size: '100%', strokeWidth: 1.5 })}
             </div>
           ) : resolvedIcon?.type === 'svg' ? (
             <div 

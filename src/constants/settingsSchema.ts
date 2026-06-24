@@ -59,5 +59,13 @@ export const SETTINGS_SCHEMA: SettingSchema[] = [
     description: '主界面应用列表的列数 (1-12)',
     type: 'input',
     defaultValue: '4',
+  },
+  {
+    id: 'historyLimit',
+    category: '通用',
+    label: '历史记录条数',
+    description: '每个应用各采集器（文件/进程/文本等）保留的历史记录上限',
+    type: 'input',
+    defaultValue: '10',
   }
 ];

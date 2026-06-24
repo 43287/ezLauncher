@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import { useCallback, type MouseEvent } from 'react';
 import { useContextMenuStore } from '../store/useContextMenuStore';
 import { useModalStore } from '../store/useModalStore';
 import { useDataStore } from '../store/useDataStore';
@@ -12,11 +12,10 @@ export function useGlobalContextMenu() {
   const { activeLeftTab, activeTopTab } = useUIStore();
 
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const x = Math.min(e.clientX, window.innerWidth - 100);
-      const y = Math.min(e.clientY, window.innerHeight - 200);
+      // 边界检查由 useContextMenuStore.openMenu 统一处理（FR-022）
       openMenu(
         [
           {
@@ -62,8 +61,8 @@ export function useGlobalContextMenu() {
             },
           },
         ],
-        x,
-        y,
+        e.clientX,
+        e.clientY,
       );
     },
     [openMenu, openAddApp, openSystemApp, addApp, activeLeftTab, activeTopTab]

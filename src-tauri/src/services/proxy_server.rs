@@ -12,6 +12,11 @@ pub static PROXY_CONNECTION: LazyLock<Mutex<Option<LocalSocketStream>>> = LazyLo
 static PROXY_STARTING_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 pub static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
 
+// 构造 admin proxy 启动参数串（消除 proxy_server 与 windows 模块间的重复，FR-021）
+pub fn admin_proxy_args(pid: u32, pipe_name: &str) -> String {
+    format!("--admin-proxy {} {}", pid, pipe_name)
+}
+
 // 代理服务的可注入抽象（DI 接缝，供 ExecutionService 注入与测试替换）。
 // 说明：底层 IPC 状态（命名管道连接/PIPE 名/关闭标志）保持进程级 static——
 // 它们在 run_proxy_client 子进程模式（tauri 应用初始化之前）及退出处理器中被访问，
@@ -58,7 +63,11 @@ impl ProxyServiceTrait for ProxyService {
 }
 
 pub fn send_proxy_command(path: &str, args: Option<Vec<String>>, cwd: Option<String>, envs: Option<std::collections::HashMap<String, String>>) -> Result<(), ServiceError> {
-    let mut guard = PROXY_CONNECTION.lock().map_err(|_| ServiceError::Concurrency("Proxy connection mutex poisoned".to_string()))?;
+    // 锁中毒一致处理：恢复并记录，保留底层连接而非永久丢弃（FR-016）
+    let mut guard = PROXY_CONNECTION.lock().unwrap_or_else(|p| {
+        tracing::warn!("PROXY_CONNECTION mutex poisoned, recovering via into_inner()");
+        p.into_inner()
+    });
     if let Some(stream) = guard.as_mut() {
         let cmd = ProxyCommand {
             path: path.to_string(),
@@ -69,14 +78,10 @@ pub fn send_proxy_command(path: &str, args: Option<Vec<String>>, cwd: Option<Str
         };
         let mut payload = serde_json::to_vec(&cmd).map_err(ServiceError::Serialization)?;
         payload.push(b'\n');
-        
-        let mut cloned_stream = stream.try_clone().map_err(ServiceError::Io)?;
-        
-        // 移出 Mutex 的写与读，使用 clone 的 stream 异步或同步执行，不阻塞主锁
-        // 但这里如果在原线程执行，依然会阻塞调用命令的线程。
-        // 由于这在 tauri command 中执行，可以用 spawn block
-        drop(guard);
 
+        let mut cloned_stream = stream.try_clone().map_err(ServiceError::Io)?;
+
+        // 保持锁直到 write-read 周期完成，防止并发交错（FR-009）
         if cloned_stream.write_all(&payload).is_ok() {
             if let Ok(reader_stream) = cloned_stream.try_clone() {
                 let mut reader = std::io::BufReader::new(reader_stream);
@@ -93,12 +98,15 @@ pub fn send_proxy_command(path: &str, args: Option<Vec<String>>, cwd: Option<Str
         }
         return Err(ServiceError::Proxy("Failed to communicate with proxy".to_string()));
     }
-    drop(guard);
     Err(ServiceError::Proxy("Not connected".to_string()))
 }
 
 pub fn shutdown_proxy() -> Result<(), ServiceError> {
-    let mut guard = PROXY_CONNECTION.lock().map_err(|_| ServiceError::Concurrency("Proxy connection mutex poisoned".to_string()))?;
+    // 锁中毒一致处理：恢复并记录（FR-016）
+    let mut guard = PROXY_CONNECTION.lock().unwrap_or_else(|p| {
+        tracing::warn!("PROXY_CONNECTION mutex poisoned, recovering via into_inner()");
+        p.into_inner()
+    });
     if let Some(stream) = guard.as_mut() {
         let cmd = ProxyCommand {
             path: "".to_string(),
@@ -119,7 +127,10 @@ pub fn request_admin_launch(executable_path: &str, args: Option<Vec<String>>, cw
     if let Err(e) = send_proxy_command(executable_path, args.clone(), cwd.clone(), envs.clone()) {
         tracing::warn!("====> Proxy 未连接: {}，尝试启动 Proxy", e);
         
-        let _guard = PROXY_STARTING_LOCK.lock().map_err(|e| ServiceError::Concurrency(format!("Mutex lock failed: {}", e)))?;
+        let _guard = PROXY_STARTING_LOCK.lock().unwrap_or_else(|p| {
+            tracing::warn!("PROXY_STARTING_LOCK mutex poisoned, recovering via into_inner()");
+            p.into_inner()
+        });
         
         if send_proxy_command(executable_path, args.clone(), cwd.clone(), envs.clone()).is_ok() {
             return Ok(());
@@ -137,7 +148,7 @@ pub fn request_admin_launch(executable_path: &str, args: Option<Vec<String>>, cw
             
             let pipe_name = MAIN_PIPE_NAME.as_str();
             let pid = std::process::id();
-            let args_str = format!("--admin-proxy {} {}", pid, pipe_name);
+            let args_str = admin_proxy_args(pid, pipe_name);
             // 绑定到变量避免临时值过早释放（原内联 .as_ptr() 存在悬垂隐患），并以 ? 取代 unwrap 防 panic
             let args_u16 = U16CString::from_str(&args_str)
                 .map_err(|e| ServiceError::Internal(format!("Invalid args string: {}", e)))?;
@@ -169,16 +180,19 @@ pub fn request_admin_launch(executable_path: &str, args: Option<Vec<String>>, cw
             }
         }
     
+        let max_attempts = 50; // 5 秒超时（原 600×100ms=60s 会阻塞调用线程过久）
         let mut attempts = 0;
-        while attempts < 600 {
+        while attempts < max_attempts {
             std::thread::sleep(std::time::Duration::from_millis(100));
             if send_proxy_command(executable_path, args.clone(), cwd.clone(), envs.clone()).is_ok() {
                 return Ok(());
             }
             attempts += 1;
         }
-        
-        send_proxy_command(executable_path, args, cwd, envs).map_err(|e| ServiceError::Proxy(format!("Proxy 重试失败 (等待 UAC 超时或代理被系统阻止): {:?}", e)))?;
+
+        Err(ServiceError::Proxy(
+            "Admin proxy did not respond within 5 seconds — UAC may have been denied or the proxy is blocked".to_string()
+        ))?;
     }
     Ok(())
 }
@@ -217,9 +231,12 @@ pub fn init_main_listener() {
                 }
                 match stream {
                     Ok(s) => {
-                        if let Ok(mut guard) = PROXY_CONNECTION.lock() {
-                            *guard = Some(s);
-                        }
+                        // 锁中毒一致处理：恢复并记录，不丢弃新接入连接（FR-016）
+                        let mut guard = PROXY_CONNECTION.lock().unwrap_or_else(|p| {
+                            tracing::warn!("PROXY_CONNECTION mutex poisoned, recovering via into_inner()");
+                            p.into_inner()
+                        });
+                        *guard = Some(s);
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -233,7 +250,8 @@ pub fn init_main_listener() {
     });
 }
 
-fn append_debug_log(msg: &str) {
+// 提权代理为独立子进程，无 tracing 订阅者，故保留独立的文件型诊断日志（非临时插桩）。
+fn append_proxy_log(msg: &str) {
     if let Ok(mut exe_path) = std::env::current_exe() {
         exe_path.pop();
         exe_path.push("proxy_debug.log");
@@ -288,12 +306,12 @@ fn verify_parent_process(expected_pid: u32) -> bool {
 
 pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
     std::panic::set_hook(Box::new(|info| {
-        append_debug_log(&format!("====> [Panic] Proxy paniced: {:?}", info));
+        append_proxy_log(&format!("====> [Panic] Proxy paniced: {:?}", info));
     }));
 
     if let Some(pid) = expected_pid {
         if !verify_parent_process(pid) {
-            append_debug_log(&format!("====> Proxy Client Startup Failed: Parent process verification failed for PID {}", pid));
+            append_proxy_log(&format!("====> Proxy Client Startup Failed: Parent process verification failed for PID {}", pid));
             return;
         }
 
@@ -321,7 +339,7 @@ pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
     let name = match actual_pipe_name.to_ns_name::<GenericNamespaced>() {
         Ok(n) => n,
         Err(e) => {
-            append_debug_log(&format!("====> Failed to create namespace name: {}", e));
+            append_proxy_log(&format!("====> Failed to create namespace name: {}", e));
             return;
         }
     };
@@ -329,7 +347,7 @@ pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
     let mut stream = match LocalSocketStream::connect(name) {
         Ok(s) => s,
         Err(e) => {
-            append_debug_log(&format!("====> Failed to connect to main process: {}", e));
+            append_proxy_log(&format!("====> Failed to connect to main process: {}", e));
             return;
         }
     };
@@ -337,7 +355,7 @@ pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
     let stream_clone = match stream.try_clone() {
         Ok(s) => s,
         Err(e) => {
-            append_debug_log(&format!("====> Failed to clone stream: {}", e));
+            append_proxy_log(&format!("====> Failed to clone stream: {}", e));
             return;
         }
     };
@@ -348,7 +366,7 @@ pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
         line.clear();
         match reader.read_line(&mut line) {
             Ok(0) => {
-                append_debug_log("Main process disconnected");
+                append_proxy_log("Main process disconnected");
                 break;
             }
             Ok(_) => {
@@ -373,7 +391,7 @@ pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
                         }
                     };
                     std::thread::spawn(move || {
-                        match crate::services::os::windows::launch_app_windows(&command.path, command.args, command.cwd, command.envs) {
+                        match crate::services::os::windows::launch_app_windows(&command.path, command.args, command.cwd, command.envs, None) {
                             Ok(_) => {
                                 let _ = thread_stream.write_all(b"OK\n");
                             }
@@ -388,7 +406,7 @@ pub fn run_proxy_client(expected_pid: Option<u32>, pipe_name: Option<String>) {
                 }
             }
             Err(e) => {
-                append_debug_log(&format!("Read error: {}", e));
+                append_proxy_log(&format!("Read error: {}", e));
                 break;
             }
         }

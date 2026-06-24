@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef, type FC, type KeyboardEvent, type PointerEvent } from 'react';
 import { useUIStore } from '../store/useUIStore';
 
 interface ShortcutCatcherProps {
@@ -7,14 +7,14 @@ interface ShortcutCatcherProps {
     defaultValue?: string;
 }
 
-export const ShortcutCatcher: React.FC<ShortcutCatcherProps> = ({ value, onChange, defaultValue }) => {
+export const ShortcutCatcher: FC<ShortcutCatcherProps> = ({ value, onChange, defaultValue }) => {
     const [recording, setRecording] = useState(false);
     const [tempValue, setTempValue] = useState('');
     const [resetting, setResetting] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const setIsRecordingShortcut = useUIStore(state => state.setIsRecordingShortcut);
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
         if (!recording) return;
         
         e.preventDefault();
@@ -68,7 +68,7 @@ export const ShortcutCatcher: React.FC<ShortcutCatcherProps> = ({ value, onChang
         }
     };
 
-    const handleKeyUp = (e: React.KeyboardEvent) => {
+    const handleKeyUp = (e: KeyboardEvent) => {
         if (!recording) return;
         e.preventDefault();
         e.stopPropagation();
@@ -90,7 +90,7 @@ export const ShortcutCatcher: React.FC<ShortcutCatcherProps> = ({ value, onChang
         }
     };
 
-    const handlePointerDown = (e: React.PointerEvent) => {
+    const handlePointerDown = (e: PointerEvent) => {
         if (!recording) return;
         
         // e.button: 3 is Mouse4 (Back), 4 is Mouse5 (Forward)

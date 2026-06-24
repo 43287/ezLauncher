@@ -1,16 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { useState, useEffect, useMemo, useRef, type FC } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { platform } from "../api/platform";
 import { useDataStore } from "../store/useDataStore";
 import { useUIStore } from "../store/useUIStore";
 import { LaunchItem } from "../types";
 import { resolveIcon } from "../utils/icons";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { useAnimatedClose } from "../hooks/useAnimatedClose";
+import { generateId } from "../constants/ids";
 
 interface SystemApp {
   name: string;
@@ -22,9 +18,9 @@ interface SystemAppModalProps {
   onClose: () => void;
 }
 
-export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
-  const [isClosing, setIsClosing] = useState(false);
+export const SystemAppModal: FC<SystemAppModalProps> = ({ onClose }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const { isClosing, handleClose } = useAnimatedClose(onClose);
   const [apps, setApps] = useState<SystemApp[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -34,9 +30,12 @@ export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
   const activeTopTab = useUIStore((state) => state.activeTopTab);
 
   useEffect(() => {
-    setIsVisible(true);
+    const timer = requestAnimationFrame(() => setIsVisible(true));
+    return () => cancelAnimationFrame(timer);
+  }, []);
 
-    // 获取系统应用
+  // 获取系统应用
+  useEffect(() => {
     platform
       .getSystemApps()
       .then((fetchedApps) => {
@@ -48,13 +47,6 @@ export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
         setIsLoading(false);
       });
   }, []);
-
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-    }, 200);
-  };
 
   const filteredApps = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
@@ -78,7 +70,7 @@ export const SystemAppModal: React.FC<SystemAppModalProps> = ({ onClose }) => {
 
   const handleSelectApp = (app: SystemApp) => {
     const newApp = {
-      id: Date.now().toString(),
+      id: generateId(),
       name: app.name,
       type: "app",
       shortcut: null,

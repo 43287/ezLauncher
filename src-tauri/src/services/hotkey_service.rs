@@ -125,7 +125,10 @@ fn init_rdev_thread() {
             let current_modifiers = std::sync::Arc::new(std::sync::Mutex::new(ModifiersState::default()));
 
             if let Err(error) = grab(move |event| {
-                let mut mods = current_modifiers.lock().unwrap();
+                let mut mods = current_modifiers.lock().unwrap_or_else(|poisoned| {
+                    tracing::error!("Modifiers mutex poisoned, recovering via into_inner()");
+                    poisoned.into_inner()
+                });
                 if handle_event(&mut mods, event.clone()) {
                     None // 如果匹配成功，则吞掉事件（拦截系统默认行为）
                 } else {
@@ -171,11 +174,12 @@ fn check_trigger(modifiers: &mut ModifiersState, key: Option<Key>, button: Optio
     }
 
     let configs = if let Some(lock) = REGISTERED_SHORTCUTS.get() {
-        if let Ok(guard) = lock.lock() {
-            guard.clone()
-        } else {
-            return false;
-        }
+        // 锁中毒一致处理：恢复并记录，不静默丢弃（FR-016）
+        let guard = lock.lock().unwrap_or_else(|p| {
+            tracing::warn!("REGISTERED_SHORTCUTS mutex poisoned, recovering via into_inner()");
+            p.into_inner()
+        });
+        guard.clone()
     } else {
         return false;
     };
@@ -235,13 +239,21 @@ pub fn register_shortcut(_app_handle: &AppHandle, shortcut_str: &str) -> Result<
     init_rdev_thread();
 
     let config = parse_shortcut(shortcut_str)?;
-    
+
     if let Some(lock) = REGISTERED_SHORTCUTS.get() {
-        if let Ok(mut guard) = lock.lock() {
-            guard.push(config);
-            tracing::info!("Registered global shortcut: {}", shortcut_str);
+        // 锁中毒一致处理：恢复并记录，不静默丢弃（FR-016）
+        let mut guard = lock.lock().unwrap_or_else(|p| {
+            tracing::warn!("REGISTERED_SHORTCUTS mutex poisoned, recovering via into_inner()");
+            p.into_inner()
+        });
+        // 去重：相同 (modifiers,key/button) 组合不重复注册，避免重复触发（FR-015）
+        if guard.iter().any(|c| *c == config) {
+            tracing::info!("Shortcut already registered, skip duplicate: {}", shortcut_str);
             return Ok(());
         }
+        guard.push(config);
+        tracing::info!("Registered global shortcut: {}", shortcut_str);
+        return Ok(());
     }
     Err(crate::services::error::ServiceError::Concurrency(
         "Failed to lock registered shortcut".to_string(),
@@ -250,11 +262,14 @@ pub fn register_shortcut(_app_handle: &AppHandle, shortcut_str: &str) -> Result<
 
 pub fn unregister_all_shortcuts(_app_handle: &AppHandle) -> Result<(), crate::services::error::ServiceError> {
     if let Some(lock) = REGISTERED_SHORTCUTS.get() {
-        if let Ok(mut guard) = lock.lock() {
-            guard.clear();
-            tracing::info!("Unregistered all global shortcuts");
-            return Ok(());
-        }
+        // 锁中毒一致处理：恢复并记录（FR-016）
+        let mut guard = lock.lock().unwrap_or_else(|p| {
+            tracing::warn!("REGISTERED_SHORTCUTS mutex poisoned, recovering via into_inner()");
+            p.into_inner()
+        });
+        guard.clear();
+        tracing::info!("Unregistered all global shortcuts");
+        return Ok(());
     }
     Err(crate::services::error::ServiceError::Concurrency(
         "Failed to lock registered shortcut".to_string(),
@@ -371,5 +386,63 @@ fn map_string_to_key(s: &str) -> Option<Key> {
         "PERIOD" | "." | ">" => Some(Key::Dot),
         "SLASH" | "/" | "?" => Some(Key::Slash),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_basic_modifier_plus_key() {
+        let c = parse_shortcut("Ctrl+Alt+K").unwrap();
+        assert!(c.ctrl && c.alt);
+        assert!(!c.shift && !c.super_key);
+        assert_eq!(c.key, Some(Key::KeyK));
+        assert_eq!(c.button, None);
+    }
+
+    #[test]
+    fn parse_is_case_insensitive_and_trims() {
+        let a = parse_shortcut(" ctrl + space ").unwrap();
+        let b = parse_shortcut("CTRL+SPACE").unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a.key, Some(Key::Space));
+    }
+
+    #[test]
+    fn parse_aliases_equivalent() {
+        assert_eq!(parse_shortcut("Control+Enter").unwrap(), parse_shortcut("Ctrl+Return").unwrap());
+        assert_eq!(parse_shortcut("Super+A").unwrap(), parse_shortcut("Meta+A").unwrap());
+    }
+
+    #[test]
+    fn parse_mouse_button() {
+        let c = parse_shortcut("Alt+Mouse4").unwrap();
+        assert!(c.alt);
+        assert_eq!(c.button, Some(Button::Unknown(1)));
+    }
+
+    #[test]
+    fn parse_unknown_key_errors() {
+        assert!(parse_shortcut("Ctrl+NoSuchKey").is_err());
+    }
+
+    // 去重谓词（与 register_shortcut 内 any(|c| *c==config) 一致）：
+    // 相同组合不重复入列，避免重复触发（FR-015）。
+    #[test]
+    fn dedup_identical_config_not_pushed_twice() {
+        let mut list: Vec<ShortcutConfig> = Vec::new();
+        let push_dedup = |list: &mut Vec<ShortcutConfig>, s: &str| {
+            let cfg = parse_shortcut(s).unwrap();
+            if !list.iter().any(|c| *c == cfg) {
+                list.push(cfg);
+            }
+        };
+        push_dedup(&mut list, "Ctrl+Alt+K");
+        push_dedup(&mut list, "ctrl+alt+k"); // 别名/大小写等价
+        assert_eq!(list.len(), 1);
+        push_dedup(&mut list, "Ctrl+Alt+J"); // 不同 → 入列
+        assert_eq!(list.len(), 2);
     }
 }

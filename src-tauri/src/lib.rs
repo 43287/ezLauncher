@@ -106,20 +106,27 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 match icon_service.get_icon_data(&decoded_path).await {
                     Ok(icon_data) => {
-                        let response = tauri::http::Response::builder()
-                            .header("Access-Control-Allow-Origin", "*")
+                        match tauri::http::Response::builder()
                             .header("Content-Type", "image/png")
                             .body(icon_data)
-                            .unwrap();
-                        responder.respond(response);
+                        {
+                            Ok(response) => responder.respond(response),
+                            Err(e) => {
+                                tracing::error!("Failed to build icon response: {:?}", e);
+                                let fallback = tauri::http::Response::builder()
+                                    .status(500)
+                                    .body(Vec::new())
+                                    .unwrap_or_default();
+                                responder.respond(fallback);
+                            }
+                        }
                     }
                     Err(e) => {
                         tracing::error!("Failed to get icon data: {:?}", e);
                         let response = tauri::http::Response::builder()
                             .status(400)
-                            .header("Access-Control-Allow-Origin", "*")
                             .body(e.to_string().into_bytes())
-                            .unwrap();
+                            .unwrap_or_default();
                         responder.respond(response);
                     }
                 }
@@ -144,15 +151,27 @@ pub fn run() {
             application::commands::store_cmds::set_portable_mode,
             application::commands::store_cmds::get_store_init_info,
             application::commands::store_cmds::ensure_portable_record,
+            application::commands::store_cmds::load_history,
+            application::commands::store_cmds::save_history,
+            application::commands::store_cmds::clear_history,
+            application::commands::collector_cmds::enumerate_processes,
+            application::commands::collector_cmds::resolve_window_process_at_cursor,
             application::commands::hotkey_cmds::register_shortcut,
             application::commands::hotkey_cmds::unregister_all_shortcuts,
             crate::services::icon_service::copy_custom_icon,
             hide_window
         ])
         .setup(|app| {
-            let _ = crate::services::hotkey_service::setup_hotkey(app);
-            let _ = crate::ui::window::setup_window(app);
-            let _ = crate::ui::tray::setup_tray(app);
+            // 初始化子系统失败应记录而非静默吞掉（FR-003/P2-8）；单项失败不阻断启动
+            if let Err(e) = crate::services::hotkey_service::setup_hotkey(app) {
+                tracing::error!("====> setup_hotkey 失败: {:?}", e);
+            }
+            if let Err(e) = crate::ui::window::setup_window(app) {
+                tracing::error!("====> setup_window 失败: {:?}", e);
+            }
+            if let Err(e) = crate::ui::tray::setup_tray(app) {
+                tracing::error!("====> setup_tray 失败: {:?}", e);
+            }
 
             Ok(())
         })
