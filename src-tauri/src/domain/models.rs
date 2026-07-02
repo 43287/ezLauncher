@@ -103,10 +103,13 @@ pub enum ResolveResult {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, TS)]
+#[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../src/types/")]
 pub struct Tab {
     pub id: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, TS)]

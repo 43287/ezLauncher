@@ -10,6 +10,60 @@ import { useUIStore } from "../../store/useUIStore";
 import { useContextMenuStore } from "../../store/useContextMenuStore";
 import { useModalStore } from "../../store/useModalStore";
 import { Tab } from "../../types";
+import { getTruncatedTabName } from "../../utils/tabDisplay";
+import { resolveIcon } from "../../utils/icons";
+import { getLucideIcon } from "../../utils/lucide";
+import { IconPickerModal } from "../IconPickerModal";
+
+// 标签内容：根据是否配置 iconUrl 切换文字/图标显示
+interface TabContentProps {
+  tab: Tab;
+  isActive: boolean;
+}
+
+function TabContent({ tab, isActive }: TabContentProps) {
+  if (tab.iconUrl) {
+    const resolvedIcon = resolveIcon(tab.iconUrl);
+    const iconColor = isActive
+      ? 'text-white'
+      : 'text-gray-700 dark:text-gray-300';
+
+    if (resolvedIcon?.type === 'lucide') {
+      const IconComponent = getLucideIcon(resolvedIcon.content);
+      return (
+        <div className="w-6 h-6 flex items-center justify-center">
+          <IconComponent size={24} strokeWidth={1.5} className={iconColor} />
+        </div>
+      );
+    }
+
+    if (resolvedIcon?.type === 'svg') {
+      return (
+        <div
+          className="w-6 h-6 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+          dangerouslySetInnerHTML={{ __html: resolvedIcon.content }}
+        />
+      );
+    }
+
+    if (resolvedIcon?.type === 'url') {
+      return (
+        <img
+          src={resolvedIcon.content}
+          alt={tab.name}
+          className="w-6 h-6 object-contain"
+          draggable={false}
+        />
+      );
+    }
+  }
+
+  return (
+    <span className="text-xs font-medium">
+      {getTruncatedTabName(tab.name)}
+    </span>
+  );
+}
 
 interface SortableTabProps {
   tab: Tab;
@@ -23,6 +77,9 @@ interface SortableTabProps {
   handleTabDoubleClick: (tab: Tab, e?: MouseEvent) => void;
   onContextMenu: (e: MouseEvent, tab: Tab) => void;
   editInputRef: RefObject<HTMLInputElement | null>;
+  isHovered: boolean;
+  onHoverEnter: () => void;
+  onHoverLeave: () => void;
 }
 
 function SortableTab({
@@ -36,7 +93,10 @@ function SortableTab({
   setActiveLeftTab,
   handleTabDoubleClick,
   onContextMenu,
-  editInputRef
+  editInputRef,
+  isHovered,
+  onHoverEnter,
+  onHoverLeave
 }: SortableTabProps) {
   const {
     attributes,
@@ -57,16 +117,21 @@ function SortableTab({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // 仅图标模式下、非编辑态、已悬停时显示名称提示
+  const showTooltip = !!tab.iconUrl && !isEditing && isHovered;
+
   // We wrap the sortable element in an outer div that handles the entrance animation independently
   return (
     <div className="animate-slide-down-fade">
-      <div 
-        ref={setNodeRef} 
-        style={style} 
-        {...attributes} 
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
         {...listeners}
-        className="w-10 h-10 flex items-center justify-center"
+        className="relative w-10 h-10 flex items-center justify-center"
         onContextMenu={(e) => onContextMenu(e, tab)}
+        onMouseEnter={onHoverEnter}
+        onMouseLeave={onHoverLeave}
       >
         {isEditing ? (
           <input
@@ -89,13 +154,21 @@ function SortableTab({
           onClick={() => setActiveLeftTab(tab.id)}
           onDoubleClick={(e) => handleTabDoubleClick(tab, e)}
           className={`w-full h-full flex items-center justify-center rounded-xl transition-all apple-ease focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 active:scale-95 ${
-            isActive 
-              ? 'bg-blue-500 text-white shadow-soft' 
+            isActive
+              ? 'bg-blue-500 text-white shadow-soft'
               : 'text-gray-500 hover:bg-black/5 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-gray-100'
           }`}
         >
-          <span className="text-xs font-medium">{tab.name.slice(0, 2)}</span>
+          <TabContent tab={tab} isActive={isActive} />
         </button>
+      )}
+      {showTooltip && (
+        <div
+          className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-lg whitespace-nowrap pointer-events-none animate-menu-pop"
+          style={{ minWidth: 'max-content' }}
+        >
+          {tab.name}
+        </div>
       )}
       </div>
     </div>
@@ -108,10 +181,17 @@ export function Sidebar() {
   const { activeLeftTab, setActiveLeftTab } = useUIStore();
   const { openMenu } = useContextMenuStore();
   const { openSettings } = useModalStore();
-  
+
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  // 图标模式下悬停显示名称：300ms 延迟避免快速划过闪烁
+  const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 图标选择器：当前正在编辑图标的标签 id
+  const [iconPickerTabId, setIconPickerTabId] = useState<string | null>(null);
 
   useEffect(() => {
     if (editingTabId && editInputRef.current) {
@@ -119,6 +199,23 @@ export function Sidebar() {
       editInputRef.current.select();
     }
   }, [editingTabId]);
+
+  // 组件卸载时清理悬停计时器
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
+
+  const handleHoverEnter = (tabId: string) => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => setHoveredTabId(tabId), 300);
+  };
+
+  const handleHoverLeave = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHoveredTabId(null);
+  };
 
   const handleTabDoubleClick = (tab: Tab, e?: MouseEvent) => {
     if (e) e.stopPropagation();
@@ -157,15 +254,36 @@ export function Sidebar() {
     updateSetting('leftTabs', newTabs);
   };
 
+  // 图标选择回调：写入对应标签的 iconUrl
+  const handleIconSelect = (iconUrl: string) => {
+    if (iconPickerTabId) {
+      updateSetting('leftTabs', leftTabs.map((t: Tab) =>
+        t.id === iconPickerTabId ? { ...t, iconUrl: iconUrl || null } : t
+      ));
+    }
+    setIconPickerTabId(null);
+  };
+
+  // 清除图标：恢复文字显示
+  const handleIconClear = (tabId: string) => {
+    updateSetting('leftTabs', leftTabs.map((t: Tab) =>
+      t.id === tabId ? { ...t, iconUrl: null } : t
+    ));
+  };
+
   const handleTabContextMenu = (e: MouseEvent, tab: Tab) => {
     e.preventDefault();
     e.stopPropagation();
     openMenu([
       { label: '重命名', onClick: () => handleTabDoubleClick(tab) },
+      { label: '设置图标', onClick: () => setIconPickerTabId(tab.id) },
+      ...(tab.iconUrl ? [{ label: '清除图标', onClick: () => handleIconClear(tab.id) }] : []),
       { isSeparator: true, label: '' },
       { label: '删除', onClick: () => handleDeleteTab(tab.id) }
     ], e.clientX, e.clientY);
   };
+
+  const editingIconTab = leftTabs.find((t: Tab) => t.id === iconPickerTabId) || null;
 
   return (
     <nav 
@@ -196,6 +314,9 @@ export function Sidebar() {
                 handleTabDoubleClick={handleTabDoubleClick}
                 onContextMenu={handleTabContextMenu}
                 editInputRef={editInputRef}
+                isHovered={hoveredTabId === tab.id}
+                onHoverEnter={() => handleHoverEnter(tab.id)}
+                onHoverLeave={handleHoverLeave}
               />
             ))}
           </SortableContext>
@@ -203,7 +324,7 @@ export function Sidebar() {
           <button
             onClick={() => {
               const newId = crypto.randomUUID();
-              updateSetting('leftTabs', [...leftTabs, { id: newId, name: 'New' }]);
+              updateSetting('leftTabs', [...leftTabs, { id: newId, name: 'New', iconUrl: null }]);
               setActiveLeftTab(newId);
               setEditingTabId(newId);
               setEditValue('New');
@@ -228,6 +349,14 @@ export function Sidebar() {
           </svg>
         </button>
       </div>
+
+      {iconPickerTabId && editingIconTab && (
+        <IconPickerModal
+          initialIconUrl={editingIconTab.iconUrl || ''}
+          onClose={() => setIconPickerTabId(null)}
+          onSelect={handleIconSelect}
+        />
+      )}
     </nav>
   );
 }

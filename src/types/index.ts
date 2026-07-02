@@ -23,6 +23,7 @@ export type { ResolveResult } from './ResolveResult';
 export const TabSchema = z.object({
   id: z.string(),
   name: z.string(),
+  iconUrl: z.string().nullable().optional(),
 });
 
 // 009 输入系统的运行时校验 schema（FR-022）：取代 z.any()，与 ts-rs 生成类型对齐。

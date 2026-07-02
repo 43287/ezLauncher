@@ -88,10 +88,10 @@ export const useDataStore = create<DataState>((set, get) => ({
       return existing;
     }
     const newTabs: Tab[] = [
-      { id: generateId(), name: 'Tab 1' },
-      { id: generateId(), name: 'Tab 2' },
-      { id: generateId(), name: 'Tab 3' },
-      { id: generateId(), name: 'Tab 4' },
+      { id: generateId(), name: 'Tab 1', iconUrl: null },
+      { id: generateId(), name: 'Tab 2', iconUrl: null },
+      { id: generateId(), name: 'Tab 3', iconUrl: null },
+      { id: generateId(), name: 'Tab 4', iconUrl: null },
     ];
     set({ settings: { ...state.settings, topTabs: { ...topTabs, [categoryId]: newTabs } } });
     return newTabs;
