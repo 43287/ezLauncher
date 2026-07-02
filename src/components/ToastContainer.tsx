@@ -11,7 +11,7 @@ export function ToastContainer() {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium transform transition-all animate-fade-up-scale cursor-pointer flex items-center justify-between min-w-[200px]
+          className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium transform transition-all animate-fade-up-scale cursor-pointer flex items-center justify-between gap-3 min-w-[200px]
             ${
               toast.type === 'error' ? 'bg-red-500 text-white' :
               toast.type === 'success' ? 'bg-green-500 text-white' :
@@ -21,6 +21,19 @@ export function ToastContainer() {
           onClick={() => removeToast(toast.id)}
         >
           <span>{toast.message}</span>
+          {toast.action && (
+            <button
+              type="button"
+              className="shrink-0 px-2 py-0.5 rounded text-xs font-semibold bg-white/20 hover:bg-white/30 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                toast.action?.onClick();
+                removeToast(toast.id);
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

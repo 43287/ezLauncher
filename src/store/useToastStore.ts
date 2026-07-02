@@ -2,15 +2,21 @@ import { create } from 'zustand';
 import { generateId } from '../constants/ids';
 import { TOAST_AUTO_DISMISS_MS } from '../constants/storage';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface ToastMessage {
   id: string;
   message: string;
   type: 'success' | 'error' | 'info';
+  action?: ToastAction;
 }
 
 interface ToastState {
   toasts: ToastMessage[];
-  addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  addToast: (message: string, type?: 'success' | 'error' | 'info', action?: ToastAction) => void;
   removeToast: (id: string) => void;
 }
 
@@ -19,10 +25,10 @@ const timeoutMap = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
-  addToast: (message, type = 'info') => {
+  addToast: (message, type = 'info', action) => {
     const id = generateId();
     set((state) => ({
-      toasts: [...state.toasts, { id, message, type }]
+      toasts: [...state.toasts, { id, message, type, action }]
     }));
     const timer = setTimeout(() => {
       timeoutMap.delete(id);
