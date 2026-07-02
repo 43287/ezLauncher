@@ -81,6 +81,7 @@ interface SortableTabProps {
   isHovered: boolean;
   onHoverEnter: () => void;
   onHoverLeave: () => void;
+  dockPosition: 'left' | 'right';
 }
 
 function SortableTab({
@@ -97,7 +98,8 @@ function SortableTab({
   editInputRef,
   isHovered,
   onHoverEnter,
-  onHoverLeave
+  onHoverLeave,
+  dockPosition
 }: SortableTabProps) {
   const {
     attributes,
@@ -107,6 +109,10 @@ function SortableTab({
     transition,
     isDragging,
   } = useSortable({ id: `leftTab-${tab.id}` });
+
+  // tab 元素引用，用于计算 tooltip 浮动坐标
+  const tabRef = useRef<HTMLDivElement | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
   // Use the sortable transition if available, otherwise apply a default smooth transition for entry
   const baseTransition = transition || "transform 300ms cubic-bezier(0.25, 1, 0.5, 1), opacity 300ms ease";
@@ -121,11 +127,34 @@ function SortableTab({
   // 仅图标模式下、非编辑态、已悬停时显示名称提示
   const showTooltip = !!tab.iconUrl && !isEditing && isHovered;
 
+  // 悬停展开时，根据 tab 元素实际坐标计算 tooltip 位置
+  // dockPosition=right（窗口贴屏幕右侧）→ 向左弹；left → 向右弹
+  useEffect(() => {
+    if (!showTooltip) {
+      setTooltipPos(null);
+      return;
+    }
+    const el = tabRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const GAP = 8;
+    const top = rect.top + rect.height / 2;
+    const left = dockPosition === 'right'
+      ? rect.left - GAP
+      : rect.right + GAP;
+    setTooltipPos({ top, left });
+  }, [showTooltip, dockPosition]);
+
+  const setRef = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    tabRef.current = node;
+  };
+
   // We wrap the sortable element in an outer div that handles the entrance animation independently
   return (
     <div className="animate-slide-down-fade">
       <div
-        ref={setNodeRef}
+        ref={setRef}
         style={style}
         {...attributes}
         {...listeners}
@@ -163,15 +192,21 @@ function SortableTab({
           <TabContent tab={tab} isActive={isActive} />
         </button>
       )}
-      {showTooltip && (
+      </div>
+      {showTooltip && tooltipPos && createPortal(
         <div
-          className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-lg whitespace-nowrap pointer-events-none animate-menu-pop"
-          style={{ minWidth: 'max-content' }}
+          role="tooltip"
+          className="fixed z-50 bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-lg whitespace-nowrap pointer-events-none animate-menu-pop"
+          style={{
+            top: tooltipPos.top,
+            left: tooltipPos.left,
+            transform: dockPosition === 'right' ? 'translate(-100%, -50%)' : 'translate(0, -50%)',
+          }}
         >
           {tab.name}
-        </div>
+        </div>,
+        document.body
       )}
-      </div>
     </div>
   );
 }
@@ -318,6 +353,7 @@ export function Sidebar() {
                 isHovered={hoveredTabId === tab.id}
                 onHoverEnter={() => handleHoverEnter(tab.id)}
                 onHoverLeave={handleHoverLeave}
+                dockPosition={(settings.dockPosition === 'left' ? 'left' : 'right')}
               />
             ))}
           </SortableContext>
