@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type RefObject, type MouseEvent, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -350,12 +351,13 @@ export function Sidebar() {
         </button>
       </div>
 
-      {iconPickerTabId && editingIconTab && (
+      {iconPickerTabId && editingIconTab && createPortal(
         <IconPickerModal
           initialIconUrl={editingIconTab.iconUrl || ''}
           onClose={() => setIconPickerTabId(null)}
           onSelect={handleIconSelect}
-        />
+        />,
+        document.body
       )}
     </nav>
   );
