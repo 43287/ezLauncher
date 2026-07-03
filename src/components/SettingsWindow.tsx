@@ -1,5 +1,6 @@
 import { useState, useEffect, type FC, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { invoke } from '@tauri-apps/api/core';
 import { useDataStore } from '../store/useDataStore';
 import { useHistoryStore } from '../store/useHistoryStore';
 import { SettingSchema, ReadonlyShortcutSetting, SettingsConfig } from '../types';
@@ -8,6 +9,8 @@ import { platform } from '../api/platform';
 import { useAnimatedClose } from '../hooks/useAnimatedClose';
 import { useWheelTabSwitch } from '../hooks/useWheelTabSwitch';
 import { SETTINGS_SCHEMA } from '../constants/settingsSchema';
+import { checkAndNotifyUpdate } from '../hooks/useUpdateChecker';
+import { useToastStore } from '../store/useToastStore';
 
 interface SettingsWindowProps {
   onClose: () => void;
@@ -35,7 +38,7 @@ export const SettingsWindow: FC<SettingsWindowProps> = ({ onClose }) => {
   const categories = Array.from(new Set(fullSchema.map(s => s.category)));
   // 我们强制把快捷键管理放在通用后面，或者就保持目前的顺序（按声明顺序，所以把 appShortcuts 放在后面或者手动指定顺序）
   const orderedCategories = ['通用', '快捷键管理', '外观'].filter(c => categories.includes(c));
-  const finalCategories = Array.from(new Set([...orderedCategories, ...categories]));
+  const finalCategories = Array.from(new Set([...orderedCategories, ...categories, '测试']));
 
   const [activeCategory, setActiveCategory] = useState(finalCategories[0]);
   const { handleWheel } = useWheelTabSwitch(finalCategories, activeCategory, setActiveCategory);
@@ -90,6 +93,40 @@ export const SettingsWindow: FC<SettingsWindowProps> = ({ onClose }) => {
     } catch (err) {
       console.warn('Failed to clear history:', err);
     }
+  };
+
+  // 测试页：主动触发更新检查
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateResult, setUpdateResult] = useState<string | null>(null);
+
+  const handleCheckUpdate = async () => {
+    if (updateChecking) return;
+    setUpdateChecking(true);
+    setUpdateResult(null);
+    try {
+      const { checked, hasNewer } = await checkAndNotifyUpdate();
+      if (!checked) {
+        setUpdateResult('检查失败（网络/限速），已静默');
+      } else if (hasNewer) {
+        setUpdateResult('发现新版本，已弹出提示');
+      } else {
+        setUpdateResult('已是最新版本');
+      }
+    } finally {
+      setUpdateChecking(false);
+      setTimeout(() => setUpdateResult(null), 4000);
+    }
+  };
+
+  // 测试页：模拟新版本 toast（绕过网络，纯 UI 验证）
+  const handleSimulateUpdateToast = () => {
+    const { addToast } = useToastStore.getState();
+    addToast('发现新版本 v0.2.0（模拟）', 'info', {
+      label: '前往下载',
+      onClick: () => {
+        invoke('open_release_url', { url: 'https://github.com/43287/ezLauncher/releases' }).catch(() => {});
+      },
+    });
   };
 
   const handleMouseEnter = (e: MouseEvent, text: string) => {
@@ -304,6 +341,37 @@ export const SettingsWindow: FC<SettingsWindowProps> = ({ onClose }) => {
                         >
                           {historyCleared ? '已清除' : '清除全部'}
                         </button>
+                      </div>
+                    )}
+                    {category === '测试' && (
+                      <div className="space-y-3">
+                        <div className="text-gray-500 dark:text-gray-400 text-[11px] leading-relaxed">
+                          此页用于验证更新提示等交互。生产环境仅启动时检查一次，其它情况静默。
+                        </div>
+                        <div className="flex justify-between items-center bg-black/5 dark:bg-white/5 px-3 h-11 rounded-md">
+                          <div className="text-gray-900 dark:text-gray-100 font-medium text-xs whitespace-nowrap">检查更新</div>
+                          <button
+                            type="button"
+                            onClick={handleCheckUpdate}
+                            disabled={updateChecking}
+                            className="ml-4 flex-shrink-0 px-3 py-1 text-xs font-medium rounded-md text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-wait transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                          >
+                            {updateChecking ? '检查中…' : '立即检查'}
+                          </button>
+                        </div>
+                        <div className="flex justify-between items-center bg-black/5 dark:bg-white/5 px-3 h-11 rounded-md">
+                          <div className="text-gray-900 dark:text-gray-100 font-medium text-xs whitespace-nowrap">模拟新版本提示</div>
+                          <button
+                            type="button"
+                            onClick={handleSimulateUpdateToast}
+                            className="ml-4 flex-shrink-0 px-3 py-1 text-xs font-medium rounded-md text-gray-700 dark:text-gray-200 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+                          >
+                            弹出提示
+                          </button>
+                        </div>
+                        {updateResult && (
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 px-1">{updateResult}</div>
+                        )}
                       </div>
                     )}
                   </div>

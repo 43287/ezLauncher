@@ -140,6 +140,8 @@ pub fn run() {
             application::commands::app_cmds::restart_as_admin,
             application::commands::app_cmds::get_system_apps,
             application::commands::app_cmds::update_window_width,
+            application::commands::app_cmds::check_latest_release,
+            application::commands::app_cmds::open_release_url,
             application::commands::store_cmds::get_store_path,
             application::commands::store_cmds::migrate_store_data,
             application::commands::store_cmds::load_settings,

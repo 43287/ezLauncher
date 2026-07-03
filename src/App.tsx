@@ -13,6 +13,7 @@ import { ToastContainer } from "./components/ToastContainer";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useWheelNavigation } from "./hooks/useWheelNavigation";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { useUpdateChecker } from "./hooks/useUpdateChecker";
 import { useGlobalContextMenu } from "./hooks/useGlobalContextMenu";
 import { DragDropProvider } from "./components/providers/DragDropProvider";
 import { platform } from "./api/platform";
@@ -136,6 +137,8 @@ function App() {
 
   useTauriEvents(setIsVisible, isVisible, settings.summonShortcut, settings.summonMouseShortcut || undefined);
   useGlobalShortcuts(isVisible);
+  // 仅在窗口首次可见且数据加载完成时检查一次新版本（启动提示，其它静默）
+  useUpdateChecker(isVisible && isLoaded);
 
   // 根据 dockPosition 决定 flex 的排列方向
   const isLeftDock = settings.dockPosition === 'left';
